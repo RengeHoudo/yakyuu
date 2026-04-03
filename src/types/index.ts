@@ -101,6 +101,8 @@ export interface GameState {
   overlayScale: number
   /** コントロールパネルで選択中のチーム。オーバーレイの打順表示に連動する */
   lineupDisplayTeam: 'away' | 'home'
+  /** 投手ごとの累計投球数。キー形式: "${team}-${number}" (例: "home-18") */
+  pitcherStats: Record<string, number>
 }
 
 export const initialPlayerInfo: PlayerInfo = {
@@ -201,6 +203,7 @@ export const initialGameState: GameState = {
   overlayPositions: { ...DEFAULT_OVERLAY_POSITIONS },
   overlayScale: 1,
   lineupDisplayTeam: 'away',
+  pitcherStats: {},
 }
 
 export { emptyLineup }

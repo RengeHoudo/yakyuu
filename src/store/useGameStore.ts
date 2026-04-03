@@ -27,7 +27,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'awayBatterIndex', 'homeBatterIndex', 'playLog',
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
-  'overlayPositions', 'overlayScale', 'lineupDisplayTeam',
+  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -117,7 +117,8 @@ export const useGameStore = create<GameStore>()(
           if (strikes >= 3) {
             const outs = s.count.outs + 1
             if (outs >= 3) {
-              return { ...advanceInningPatch(s), pitchCount: s.pitchCount + 1 }
+              // 最後の1球を旧投手に属させた後にイニング進行（pitchCount を上書きしない）
+              return advanceInningPatch({ ...extractGameState(s), pitchCount: s.pitchCount + 1 })
             }
             return { count: { balls: 0, strikes: 0, outs }, pitchCount: s.pitchCount + 1 }
           }
@@ -172,7 +173,24 @@ export const useGameStore = create<GameStore>()(
 
       setBatter: (info) => set({ batter: info }),
 
-      setPitcher: (info) => set({ pitcher: info }),
+      setPitcher: (info) =>
+        set((s) => {
+          // 投手番号が変わらない場合（内容編集のみ）： pitchCount はそのまま
+          if (s.pitcher.number === info.number) {
+            return { pitcher: info }
+          }
+          // 投手交代: 旧投手の投球数を保存、新投手の累積投球数を復元
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const prevKey = `${defTeam}-${s.pitcher.number}`
+          const newKey  = `${defTeam}-${info.number}`
+          const prevStats = s.pitcherStats ?? {}
+          const pitcherStats = {
+            ...prevStats,
+            [prevKey]: (prevStats[prevKey] ?? 0) + s.pitchCount,
+          }
+          const restoredPitchCount = pitcherStats[newKey] ?? 0
+          return { pitcher: info, pitchCount: restoredPitchCount, pitcherStats }
+        }),
 
       addHit: (team) =>
         set((s) => team === 'away'
@@ -522,10 +540,68 @@ function applyWalk(s: GameState): Partial<GameState> {
 }
 
 function advanceInningPatch(s: GameState): Partial<GameState> {
+  // Bug#1: 投手の投球数を pitcherStats に保存し pitchCount をリセット
+  const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+  const pitcherKey = `${defTeam}-${s.pitcher.number}`
+  const prevStats = s.pitcherStats ?? {}
+  const pitcherStats = {
+    ...prevStats,
+    [pitcherKey]: (prevStats[pitcherKey] ?? 0) + s.pitchCount,
+  }
+
+  // Bug#2: 今終わったハーフのスコアが null なら 0 に確定
+  const innings = [...s.innings]
+  const currentIdx = innings.findIndex((inn) => inn.inning === s.currentInning)
+  if (currentIdx !== -1) {
+    const inn = { ...innings[currentIdx]! }
+    if (s.currentHalf === 'top') {
+      if (inn.top === null) inn.top = 0
+    } else {
+      if (inn.bottom === null) inn.bottom = 0
+    }
+    innings[currentIdx] = inn
+  }
+
+  // Bug#3: 攻守交代後の打者・投手を自動セット
+  const newHalf = s.currentHalf === 'top' ? 'bottom' : 'top'
+  const attackTeam = newHalf === 'top' ? 'away' : 'home'
+  const newDefTeam  = newHalf === 'top' ? 'home' : 'away'
+
+  const attackLineup = attackTeam === 'away' ? s.awayLineup : s.homeLineup
+  const batterIdx    = attackTeam === 'away' ? s.awayBatterIndex : s.homeBatterIndex
+  const batterPlayer = attackLineup[batterIdx]
+  const newBatter: PlayerInfo = batterPlayer?.name
+    ? {
+        name: batterPlayer.name,
+        number: batterPlayer.number,
+        stat: formatBatterStat(batterPlayer),
+        statLabel: '',
+      }
+    : { ...initialPlayerInfo }
+
+  const defLineup = newDefTeam === 'away' ? s.awayLineup : s.homeLineup
+  const pitcherPlayer = defLineup[9]
+  const newPitcher: PlayerInfo = pitcherPlayer?.name
+    ? {
+        name: pitcherPlayer.name,
+        number: pitcherPlayer.number,
+        stat: pitcherPlayer.record || '',
+        statLabel: pitcherPlayer.appearances ? `${pitcherPlayer.appearances}登板` : '',
+      }
+    : { ...initialPlayerInfo }
+
+  // 新投手の累積投球数を pitcherStats から復元（未登場なら 0）
+  const incomingKey = pitcherPlayer?.name ? `${newDefTeam}-${pitcherPlayer.number}` : null
+  const restoredPitchCount = incomingKey ? (pitcherStats[incomingKey] ?? 0) : 0
+
   const resetState: Partial<GameState> = {
     count: { balls: 0, strikes: 0, outs: 0 },
     runners: { first: false, second: false, third: false },
-    batter: { ...initialPlayerInfo },
+    pitchCount: restoredPitchCount,
+    pitcherStats,
+    batter: newBatter,
+    pitcher: newPitcher,
+    lineupDisplayTeam: attackTeam, // Bug#4
   }
 
   if (s.autoChangeEffect) {
@@ -540,11 +616,10 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
   }
 
   if (s.currentHalf === 'top') {
-    return { ...resetState, currentHalf: 'bottom' as const }
+    return { ...resetState, currentHalf: 'bottom' as const, innings }
   }
 
   const nextInning = s.currentInning + 1
-  const innings = [...s.innings]
   if (!innings.find((inn) => inn.inning === nextInning)) {
     innings.push({ inning: nextInning, top: null, bottom: null })
   }
