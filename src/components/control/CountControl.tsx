@@ -13,6 +13,9 @@ export default function CountControl() {
   const setPitchCount = useGameStore((s) => s.setPitchCount)
   const recordHit = useGameStore((s) => s.recordHit)
   const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
+  const recordGroundout = useGameStore((s) => s.recordGroundout)
+  const recordDoublePlay = useGameStore((s) => s.recordDoublePlay)
+  const recordTriplePlay = useGameStore((s) => s.recordTriplePlay)
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -122,27 +125,6 @@ export default function CountControl() {
       {/* プリセット */}
       <div className="flex gap-2 pt-2 border-t border-gray-700">
         <button
-          onClick={() => {
-            addStrike()
-            addStrike()
-            addStrike()
-          }}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-xs font-bold"
-        >
-          三振
-        </button>
-        <button
-          onClick={() => {
-            addBall()
-            addBall()
-            addBall()
-            addBall()
-          }}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-xs font-bold"
-        >
-          四球
-        </button>
-        <button
           onClick={resetCount}
           className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-xs font-bold"
         >
@@ -165,6 +147,31 @@ export default function CountControl() {
             className="flex-1 bg-orange-700 hover:bg-orange-600 text-white px-3 py-2 rounded text-sm font-bold"
           >
             死球
+          </button>
+        </div>
+      </div>
+
+      {/* アウトプレー */}
+      <div className="pt-2 border-t border-gray-700 space-y-1">
+        <p className="text-gray-400 text-xs">アウトプレー</p>
+        <div className="flex gap-2">
+          <button
+            onClick={recordGroundout}
+            className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            ゴロ/犠打
+          </button>
+          <button
+            onClick={recordDoublePlay}
+            className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            併殺
+          </button>
+          <button
+            onClick={recordTriplePlay}
+            className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            三重殺
           </button>
         </div>
       </div>

@@ -60,6 +60,9 @@ interface GameActions {
   addHit: (team: 'away' | 'home') => void
   recordHit: () => void
   recordHitByPitch: () => void
+  recordGroundout: () => void
+  recordDoublePlay: () => void
+  recordTriplePlay: () => void
   addError: (team: 'away' | 'home') => void
   setHits: (team: 'away' | 'home', count: number) => void
   setErrors: (team: 'away' | 'home', count: number) => void
@@ -136,11 +139,10 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const outs = s.count.outs + 1
           if (outs >= 3) {
-            // まず現在の打者インデックスを進めてから攻守交代
             return { ...advanceBatterPatch(s), ...advanceInningPatch(s) }
           }
-          // アウト（3アウト未満）: 打者を次に進める
-          return advanceBatterPatch({ ...extractGameState(s), count: { ...s.count, outs } })
+          // +1ボタン: out追加のみ（打者は進めない）
+          return { count: { balls: 0, strikes: 0, outs } }
         }),
 
       resetCount: () =>
@@ -221,6 +223,10 @@ export const useGameStore = create<GameStore>()(
           ...advanceBatterPatch(s),
           pitchCount: s.pitchCount + 1,
         })),
+
+      recordGroundout: () => set((s) => applyOutPlay(s, 1)),
+      recordDoublePlay: () => set((s) => applyOutPlay(s, 2)),
+      recordTriplePlay: () => set((s) => applyOutPlay(s, 3)),
 
       addError: (team) =>
         set((s) => team === 'away'
@@ -523,6 +529,17 @@ export const useGameStore = create<GameStore>()(
 useGameStore.subscribe((state) => {
   broadcastState(extractGameState(state))
 })
+
+/** アウトプレー共通: outsToAdd 個アウト & 打者交代 & 投球数+1 */
+function applyOutPlay(s: GameState, outsToAdd: number): Partial<GameState> {
+  const newOuts = s.count.outs + outsToAdd
+  const sWithPitch: GameState = { ...extractGameState(s), pitchCount: s.pitchCount + 1 }
+  if (newOuts >= 3) {
+    return { ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
+  }
+  const sWithOuts: GameState = { ...extractGameState(s), count: { ...s.count, outs: newOuts } }
+  return { ...advanceBatterPatch(sWithOuts), pitchCount: s.pitchCount + 1 }
+}
 
 /** 打者交代: 次の打者をセットし B/S カウントをリセット（アウト数は維持） */
 function advanceBatterPatch(s: GameState): Partial<GameState> {
