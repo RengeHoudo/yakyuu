@@ -2,6 +2,20 @@ export type HalfInning = 'top' | 'bottom'
 
 export type Position = '投' | '捕' | '一' | '二' | '三' | '遊' | '左' | '中' | '右' | 'DH' | ''
 
+/** 全選手名簿 CSV の守備位置カテゴリ */
+export type PositionCategory = '投手' | '捕手' | '内野手' | '外野手'
+
+/** 全選手名簿の1選手エントリ */
+export interface RosterPlayer {
+  number: string
+  name: string
+  positionCategory: PositionCategory
+  battingAvg?: string
+  homeRuns?: string
+  rbi?: string
+  ops?: string
+}
+
 export interface Count {
   balls: number
   strikes: number

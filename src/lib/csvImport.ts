@@ -1,6 +1,64 @@
-import type { LineupPlayer, Position } from '../types'
+import type { LineupPlayer, Position, PositionCategory, RosterPlayer } from '../types'
 
 const VALID_POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH']
+
+const VALID_CATEGORIES: PositionCategory[] = ['投手', '捕手', '内野手', '外野手']
+
+/**
+ * 選手名の正規化
+ * - 全角スペース → 半角スペース
+ * - 全角英数字・記号（！-～）→ 半角
+ * - 連続スペース → 1つに
+ */
+function normalizePlayerName(name: string): string {
+  return name
+    .replace(/\u3000/g, ' ')
+    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+/**
+ * 全選手名簿 CSV テキストから RosterPlayer[] をパースする。
+ *
+ * 期待フォーマット（ヘッダー行あり）:
+ *   守備位置,背番号,名前,打率,HR,打点,OPS
+ *
+ * - 守備位置: 投手 | 捕手 | 内野手 | 外野手
+ * - ヘッダー行は自動スキップ（1列目が有効カテゴリでなければヘッダーと判定）
+ */
+export function parseRosterCsv(text: string): RosterPlayer[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+
+  if (lines.length === 0) throw new Error('CSVが空です')
+
+  const firstCol = lines[0]!.split(',')[0]!.trim()
+  const dataLines = VALID_CATEGORIES.includes(firstCol as PositionCategory) ? lines : lines.slice(1)
+
+  const players: RosterPlayer[] = []
+  for (const line of dataLines) {
+    const cols = line.split(',').map((c) => c.trim())
+    const posRaw = cols[0] ?? ''
+    const number = cols[1] ?? ''
+    const rawName = cols[2] ?? ''
+    if (!VALID_CATEGORIES.includes(posRaw as PositionCategory) || !rawName) continue
+    players.push({
+      positionCategory: posRaw as PositionCategory,
+      number,
+      name: normalizePlayerName(rawName),
+      battingAvg: cols[3] || undefined,
+      homeRuns: cols[4] || undefined,
+      rbi: cols[5] || undefined,
+      ops: cols[6] || undefined,
+    })
+  }
+
+  if (players.length === 0) throw new Error('有効な選手データがありません')
+  return players
+}
 
 /**
  * CSV テキストから LineupPlayer[] をパースする。

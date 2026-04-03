@@ -1,22 +1,36 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
-import type { LineupPlayer, Position } from '../../types'
+import type { LineupPlayer, Position, PositionCategory, RosterPlayer } from '../../types'
 import { CARP_LINEUP, HAWKS_LINEUP } from '../../types'
-import { parseLineupCsv } from '../../lib/csvImport'
+import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 
-const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH']
+const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
+
+const CATEGORY_ORDER: PositionCategory[] = ['投手', '捕手', '内野手', '外野手']
+const CATEGORY_SHORT: Record<PositionCategory, string> = {
+  投手: '投', 捕手: '捕', 内野手: '内', 外野手: '外',
+}
+
+function sortedRoster(roster: RosterPlayer[]): RosterPlayer[] {
+  return [...roster].sort(
+    (a, b) => CATEGORY_ORDER.indexOf(a.positionCategory) - CATEGORY_ORDER.indexOf(b.positionCategory),
+  )
+}
 
 function BatterRow({
   player,
   isCurrent,
+  roster,
   onSelect,
   onChange,
 }: {
   player: LineupPlayer
   isCurrent: boolean
+  roster: RosterPlayer[]
   onSelect: () => void
   onChange: (p: LineupPlayer) => void
 }) {
+  const sorted = sortedRoster(roster)
   return (
     <div
       className={`flex items-center gap-1.5 text-sm rounded px-1.5 py-1 ${
@@ -36,12 +50,38 @@ function BatterRow({
           <option key={p} value={p}>{p}</option>
         ))}
       </select>
-      <input
-        className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
-        placeholder="名前"
-        value={player.name}
-        onChange={(e) => onChange({ ...player, name: e.target.value })}
-      />
+      {sorted.length > 0 ? (
+        <select
+          className="bg-gray-700 text-white rounded px-1 py-1 text-xs flex-1 min-w-0"
+          value=""
+          onChange={(e) => {
+            const r = sorted.find((r) => `${r.number}__${r.name}` === e.target.value)
+            if (r) onChange({
+              ...player,
+              name: r.name,
+              number: r.number,
+              battingAvg: r.battingAvg ?? player.battingAvg,
+              homeRuns: r.homeRuns ?? player.homeRuns,
+              rbi: r.rbi ?? player.rbi,
+              ops: r.ops ?? player.ops,
+            })
+          }}
+        >
+          <option value="">{player.name || '-- 選手を選択 --'}</option>
+          {sorted.map((r) => (
+            <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
+              {CATEGORY_SHORT[r.positionCategory]}: {r.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
+          placeholder="名前"
+          value={player.name}
+          onChange={(e) => onChange({ ...player, name: e.target.value })}
+        />
+      )}
       <input
         className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-12 shrink-0"
         placeholder="打率"
@@ -83,13 +123,16 @@ function BatterRow({
 
 function PitcherRow({
   player,
+  roster,
   onSelect,
   onChange,
 }: {
   player: LineupPlayer
+  roster: RosterPlayer[]
   onSelect: () => void
   onChange: (p: LineupPlayer) => void
 }) {
+  const pitchers = sortedRoster(roster).filter((r) => r.positionCategory === '投手')
   return (
     <div className="flex items-center gap-1.5 text-sm rounded px-1.5 py-1 bg-red-900/20 border border-red-800/30">
       <span className="text-red-400 w-4 text-center text-xs shrink-0 font-bold">
@@ -98,12 +141,30 @@ function PitcherRow({
       <span className="text-red-400 text-xs w-12 shrink-0 text-center font-bold">
         投
       </span>
-      <input
-        className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
-        placeholder="投手名"
-        value={player.name}
-        onChange={(e) => onChange({ ...player, name: e.target.value })}
-      />
+      {pitchers.length > 0 ? (
+        <select
+          className="bg-gray-700 text-white rounded px-1 py-1 text-xs flex-1 min-w-0"
+          value=""
+          onChange={(e) => {
+            const r = pitchers.find((r) => `${r.number}__${r.name}` === e.target.value)
+            if (r) onChange({ ...player, name: r.name, number: r.number })
+          }}
+        >
+          <option value="">{player.name || '-- 投手を選択 --'}</option>
+          {pitchers.map((r) => (
+            <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
+              投: {r.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
+          placeholder="投手名"
+          value={player.name}
+          onChange={(e) => onChange({ ...player, name: e.target.value })}
+        />
+      )}
       <input
         className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-10 shrink-0"
         placeholder="登板"
@@ -130,7 +191,9 @@ function PitcherRow({
 /** 1チーム分の打順パネル */
 function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const [csvError, setCsvError] = useState<string | null>(null)
+  const [roster, setRoster] = useState<RosterPlayer[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const rosterFileRef = useRef<HTMLInputElement>(null)
 
   const team = useGameStore((s) => side === 'away' ? s.awayTeam : s.homeTeam)
   const lineup = useGameStore((s) => side === 'away' ? s.awayLineup : s.homeLineup)
@@ -159,6 +222,24 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
         setCsvError(null)
       } catch (err) {
         setCsvError(err instanceof Error ? err.message : 'CSV読み込みに失敗しました')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleRosterImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCsvError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const players = parseRosterCsv(reader.result as string)
+        setRoster(players)
+        setCsvError(null)
+      } catch (err) {
+        setCsvError(err instanceof Error ? err.message : '選手名簿の読み込みに失敗しました')
       }
     }
     reader.readAsText(file)
@@ -213,12 +294,37 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
           className="hidden"
           onChange={handleCsvImport}
         />
+        <input
+          ref={rosterFileRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleRosterImport}
+        />
         <button
           onClick={() => fileInputRef.current?.click()}
           className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold"
         >
-          CSV読込
+          打順CSV読込
         </button>
+        <button
+          onClick={() => rosterFileRef.current?.click()}
+          className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-xs font-bold"
+        >
+          選手名簿CSV読込
+          {roster.length > 0 && (
+            <span className="ml-1 text-purple-200">({roster.length}名)</span>
+          )}
+        </button>
+        {roster.length > 0 && (
+          <button
+            onClick={() => setRoster([])}
+            className="text-gray-500 hover:text-gray-300 text-xs px-1"
+            title="名簿をクリア"
+          >
+            ✕名簿
+          </button>
+        )}
         <button
           onClick={() => setLineup(side, [...CARP_LINEUP])}
           className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded text-xs"
@@ -245,6 +351,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             key={player.order}
             player={player}
             isCurrent={idx === batterIdx && isAttacking}
+            roster={roster}
             onSelect={() => selectBatter(side, idx)}
             onChange={(p) => setLineupPlayer(side, idx, p)}
           />
@@ -255,6 +362,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
       {lineup[9] && (
         <PitcherRow
           player={lineup[9]}
+          roster={roster}
           onSelect={() => selectBatter(side, 9)}
           onChange={(p) => setLineupPlayer(side, 9, p)}
         />
