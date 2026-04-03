@@ -1551,19 +1551,20 @@ describe('Bug#5 アウト時の次打者自動移行 (addOut)', () => {
     })
   })
 
-  it('B5-1: 1アウト時、次の打者にセットされる', () => {
+  it('B5-1: 1アウト時、out+1になる（打者は進まない）', () => {
     s().addOut()
     expect(s().count.outs).toBe(1)
-    expect(s().awayBatterIndex).toBe(1)
-    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+    expect(s().awayBatterIndex).toBe(0) // 変わらない
   })
 
-  it('B5-2: 2アウト連続で打者が2つ進む', () => {
+  it('B5-2: 2アウト連続で outs=2 になる（打者は進まない）', () => {
     useGameStore.setState({ awayBatterIndex: 3 })
     s().addOut()
     s().addOut()
     expect(s().count.outs).toBe(2)
-    expect(s().awayBatterIndex).toBe(5)
+    expect(s().awayBatterIndex).toBe(3) // 変わらない
   })
 
   it('B5-3: ラインアップ未設定でもクラッシュしない（countのみリセット）', () => {
@@ -1635,6 +1636,124 @@ describe('Bug#5 三振時の次打者自動移行 (addStrike)', () => {
     })
     s().addStrike()
     expect(s().awayBatterIndex).toBe(6)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordGroundout / recordDoublePlay / recordTriplePlay
+// ─────────────────────────────────────────────
+
+describe('recordGroundout ゴロ/牲打', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 1, strikes: 2, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('GO-1: out+1、打者が次に進む', () => {
+    s().recordGroundout()
+    expect(s().count.outs).toBe(1)
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('GO-2: balls=0, strikes=0 にリセット', () => {
+    s().recordGroundout()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('GO-3: pitchCount が +1', () => {
+    s().recordGroundout()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('GO-4: 3アウト → advanceInning、打者インデックスも進む', () => {
+    useGameStore.setState({
+      count: { balls: 0, strikes: 0, outs: 2 },
+      awayBatterIndex: 4,
+      currentHalf: 'top',
+    })
+    s().recordGroundout()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+    expect(s().awayBatterIndex).toBe(5)
+  })
+})
+
+describe('recordDoublePlay 併殺', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('DP-1: out+2になり打者が次に進む', () => {
+    s().recordDoublePlay()
+    expect(s().count.outs).toBe(2)
+    expect(s().awayBatterIndex).toBe(1)
+  })
+
+  it('DP-2: pitchCount が +1', () => {
+    s().recordDoublePlay()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('DP-3: outs=1 から out+2 → 3アウトで advanceInning', () => {
+    useGameStore.setState({
+      count: { balls: 0, strikes: 0, outs: 1 },
+      awayBatterIndex: 2,
+      currentHalf: 'top',
+    })
+    s().recordDoublePlay()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+    expect(s().awayBatterIndex).toBe(3)
+  })
+})
+
+describe('recordTriplePlay 三重殺', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('TP-1: 常に advanceInning', () => {
+    s().recordTriplePlay()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('TP-2: 打者が次に進む', () => {
+    s().recordTriplePlay()
+    expect(s().awayBatterIndex).toBe(1)
+  })
+
+  it('TP-3: 投球数+1 が旧投手の pitcherStats に保存され、新投手の pitchCount は 0', () => {
+    useGameStore.setState({
+      pitcher: { name: '先発', number: '18', stat: '', statLabel: '' },
+    })
+    s().recordTriplePlay()
+    // home-18 に 11球（10+1）が保存される
+    expect(s().pitcherStats['home-18']).toBe(11)
+    // 攻守交代後の新投手は 0 球スタート
+    expect(s().pitchCount).toBe(0)
   })
 })
 
