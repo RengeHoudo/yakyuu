@@ -1879,3 +1879,228 @@ describe('recordHitByPitch 死球打者記録', () => {
     expect(s().runners).toEqual({ first: true, second: true, third: false })
   })
 })
+
+// ─────────────────────────────────────────────
+// setRunnerAtBase
+// ─────────────────────────────────────────────
+
+describe('setRunnerAtBase', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+    })
+  })
+
+  it('一塁にインデックス 2 をセットすると runners.first=true, runnerIndices.first=2', () => {
+    s().setRunnerAtBase('first', 2)
+    expect(s().runners.first).toBe(true)
+    expect(s().runnerIndices.first).toBe(2)
+  })
+
+  it('二塁にインデックス 5 をセットすると runners.second=true, runnerIndices.second=5', () => {
+    s().setRunnerAtBase('second', 5)
+    expect(s().runners.second).toBe(true)
+    expect(s().runnerIndices.second).toBe(5)
+  })
+
+  it('三塁にインデックス 7 をセットすると runners.third=true, runnerIndices.third=7', () => {
+    s().setRunnerAtBase('third', 7)
+    expect(s().runners.third).toBe(true)
+    expect(s().runnerIndices.third).toBe(7)
+  })
+
+  it('null をセットすると runners.first=false, runnerIndices.first=null になる', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 3, second: null, third: null },
+    })
+    s().setRunnerAtBase('first', null)
+    expect(s().runners.first).toBe(false)
+    expect(s().runnerIndices.first).toBeNull()
+  })
+
+  it('他の塁は影響を受けない', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 1, second: 4, third: null },
+    })
+    s().setRunnerAtBase('third', 6)
+    expect(s().runners.first).toBe(true)
+    expect(s().runnerIndices.first).toBe(1)
+    expect(s().runners.second).toBe(true)
+    expect(s().runnerIndices.second).toBe(4)
+  })
+})
+
+// ─────────────────────────────────────────────
+// scoreRunner
+// ─────────────────────────────────────────────
+
+describe('scoreRunner', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      awayTotal: 0,
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 2, second: null, third: null },
+    })
+  })
+
+  it('一塁走者(index=2)をスコアすると得点+1、runners.first=false、runnerIndices.first=null', () => {
+    s().scoreRunner(2)
+    expect(s().runners.first).toBe(false)
+    expect(s().runnerIndices.first).toBeNull()
+    expect(s().innings[0]?.top).toBe(1)
+    expect(s().awayTotal).toBe(1)
+  })
+
+  it('二塁走者(index=4)をスコアすると得点+1、runners.second=false', () => {
+    useGameStore.setState({
+      runners: { first: false, second: true, third: false },
+      runnerIndices: { first: null, second: 4, third: null },
+    })
+    s().scoreRunner(4)
+    expect(s().runners.second).toBe(false)
+    expect(s().runnerIndices.second).toBeNull()
+    expect(s().innings[0]?.top).toBe(1)
+  })
+
+  it('三塁走者(index=7)をスコアすると得点+1、runners.third=false', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 7 },
+    })
+    s().scoreRunner(7)
+    expect(s().runners.third).toBe(false)
+    expect(s().runnerIndices.third).toBeNull()
+    expect(s().innings[0]?.top).toBe(1)
+  })
+
+  it('走者に存在しないインデックスをスコアしても状態が変わらない', () => {
+    s().scoreRunner(9)
+    expect(s().runners.first).toBe(true)
+    expect(s().runnerIndices.first).toBe(2)
+    expect(s().innings[0]?.top).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────
+// 四球時 runnerIndices 更新
+// ─────────────────────────────────────────────
+
+describe('四球時 runnerIndices 更新 (applyWalk via addBall x4)', () => {
+  const walk = () => {
+    s().addBall()
+    s().addBall()
+    s().addBall()
+    s().addBall()
+  }
+
+  it('走者なし四球: runnerIndices.first に打者インデックス(0)がセットされる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+    })
+    walk()
+    expect(s().runnerIndices.first).toBe(0)
+    expect(s().runnerIndices.second).toBeNull()
+    expect(s().runnerIndices.third).toBeNull()
+  })
+
+  it('一塁走者あり四球: 一塁走者が二塁に押し出され、runnerIndices が正しく移動する', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 1, second: null, third: null },
+    })
+    walk()
+    expect(s().runnerIndices.first).toBe(3)  // 打者(3)が一塁へ
+    expect(s().runnerIndices.second).toBe(1) // 元一塁走者(1)が二塁へ
+    expect(s().runnerIndices.third).toBeNull()
+  })
+
+  it('一二塁走者あり四球: 一・二塁走者が押し出され、runnerIndices が全てセットされる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 5,
+      currentHalf: 'top',
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 2, second: 0, third: null },
+    })
+    walk()
+    expect(s().runnerIndices.first).toBe(5)  // 打者(5)が一塁へ
+    expect(s().runnerIndices.second).toBe(2) // 元一塁走者(2)が二塁へ
+    expect(s().runnerIndices.third).toBe(0)  // 元二塁走者(0)が三塁へ
+  })
+
+  it('満塁四球: 三塁走者が生還し runnerIndices が正しく移動する', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 6,
+      currentHalf: 'top',
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 3, second: 1, third: 0 },
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      awayTotal: 0,
+    })
+    walk()
+    expect(s().runnerIndices.first).toBe(6)  // 打者(6)が一塁へ
+    expect(s().runnerIndices.second).toBe(3) // 元一塁走者(3)が二塁へ
+    expect(s().runnerIndices.third).toBe(1)  // 元二塁走者(1)が三塁へ
+    // 元三塁走者(0)は生還 → 得点+1
+    expect(s().innings[0]?.top).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
+// advanceInning clears runnerIndices
+// ─────────────────────────────────────────────
+
+describe('advanceInning で runnerIndices がリセットされる', () => {
+  it('攻守交代後 runnerIndices が全て null になる', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 2, second: 5, third: null },
+    })
+    s().advanceInning()
+    expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
+  })
+
+  it('3アウトによる自動 advanceInning でも runnerIndices がリセットされる', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings: [{ inning: 1, top: null, bottom: null }],
+      runners: { first: false, second: true, third: true },
+      runnerIndices: { first: null, second: 3, third: 7 },
+    })
+    s().addOut()
+    expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
+  })
+})
+
+// ─────────────────────────────────────────────
+// rewindInning clears runnerIndices
+// ─────────────────────────────────────────────
+
+describe('rewindInning で runnerIndices がリセットされる', () => {
+  it('イニング戻し後 runnerIndices が全て null になる', () => {
+    useGameStore.setState({
+      currentInning: 3,
+      currentHalf: 'bottom',
+      runners: { first: true, second: false, third: true },
+      runnerIndices: { first: 4, second: null, third: 8 },
+    })
+    s().rewindInning()
+    expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
+  })
+})

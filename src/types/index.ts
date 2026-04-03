@@ -28,6 +28,13 @@ export interface Runners {
   third: boolean
 }
 
+/** 各塁に出塁している打順インデックス（0-8）。null = 誰もいない */
+export interface RunnerIndices {
+  first: number | null
+  second: number | null
+  third: number | null
+}
+
 export interface PlayerInfo {
   name: string
   number: string
@@ -117,6 +124,25 @@ export interface GameState {
   lineupDisplayTeam: 'away' | 'home'
   /** 投手ごとの累計投球数。キー形式: "${team}-${number}" (例: "home-18") */
   pitcherStats: Record<string, number>
+  /** 各塁に出塁している攻撃チーム打順インデックス */
+  runnerIndices: RunnerIndices
+}
+
+/**
+ * 選手名から表示用の短縮名を抽出する。
+ * - "秋山 翔吾" → "秋山"  (苗字のみ)
+ * - "S.サンタナ" → "サンタナ" (カタカナ部分のみ)
+ * - "マクブルーム" → "マクブルーム" (そのまま)
+ */
+export function extractDisplayName(name: string): string {
+  if (!name) return ''
+  // "A.カタカナ" スタイル: アルファベット + ドット + カタカナ
+  const alphaKatakanaMatch = name.match(/^[A-Za-z]+\.([\u30A1-\u30FE]+)$/)
+  if (alphaKatakanaMatch) return alphaKatakanaMatch[1]!
+  // 日本語氏名 (スペース区切り): 苗字部分のみ
+  if (name.includes(' ')) return name.split(' ')[0]!
+  // ニックネームなど: そのまま
+  return name
 }
 
 export const initialPlayerInfo: PlayerInfo = {
@@ -180,6 +206,7 @@ export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
   playerInfo: { x: 24, y: 1020 },
   playLog: { x: 1560, y: 800 },
   mascot: { x: 1740, y: 900 },
+  fieldingDiagram: { x: 1680, y: 24 },
 }
 
 export const initialGameState: GameState = {
@@ -198,6 +225,7 @@ export const initialGameState: GameState = {
   count: { balls: 0, strikes: 0, outs: 0 },
   runners: { first: false, second: false, third: false },
   batter: { name: '秋山 翔吾', number: '55', stat: '.278 4本 28打点 OPS.735', statLabel: '' },
+  runnerIndices: { first: null, second: null, third: null },
   pitcher: { name: '森下 暢仁', number: '18', stat: '10勝5敗', statLabel: '22登板' },
   awayLineup: [...CARP_LINEUP],
   homeLineup: [...CARP_LINEUP],

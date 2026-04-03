@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
-import type { LineupPlayer, Position, PositionCategory, RosterPlayer } from '../../types'
+import type { LineupPlayer, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
 import { CARP_LINEUP, HAWKS_LINEUP } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 
@@ -24,100 +24,148 @@ function BatterRow({
   roster,
   onSelect,
   onChange,
+  isAttacking,
+  runnerBase,
+  onSetBase,
+  onScore,
+  showStats,
 }: {
   player: LineupPlayer
   isCurrent: boolean
   roster: RosterPlayer[]
   onSelect: () => void
   onChange: (p: LineupPlayer) => void
+  isAttacking: boolean
+  runnerBase: keyof RunnerIndices | null
+  onSetBase: (base: keyof RunnerIndices) => void
+  onScore: () => void
+  showStats: boolean
 }) {
   const sorted = sortedRoster(roster)
   return (
     <div
-      className={`flex items-center gap-1.5 text-sm rounded px-1.5 py-1 ${
+      className={`text-sm rounded px-1.5 py-1 space-y-0.5 ${
         isCurrent ? 'bg-accent/30 ring-1 ring-accent' : ''
       }`}
     >
-      <span className="text-gray-500 w-4 text-center text-xs shrink-0">
-        {player.order}
-      </span>
-      <select
-        className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-12 shrink-0"
-        value={player.position}
-        onChange={(e) => onChange({ ...player, position: e.target.value as Position })}
-      >
-        <option value="">--</option>
-        {POSITIONS.map((p) => (
-          <option key={p} value={p}>{p}</option>
-        ))}
-      </select>
-      {sorted.length > 0 ? (
+      {/* 1行目: 番号・守備位置・選手名・操作ボタン */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-gray-500 w-4 text-center text-xs shrink-0">
+          {player.order}
+        </span>
         <select
-          className="bg-gray-700 text-white rounded px-1 py-1 text-xs flex-1 min-w-0"
-          value=""
-          onChange={(e) => {
-            const r = sorted.find((r) => `${r.number}__${r.name}` === e.target.value)
-            if (r) onChange({
-              ...player,
-              name: r.name,
-              number: r.number,
-              battingAvg: r.battingAvg ?? '',
-              homeRuns: r.homeRuns ?? '',
-              rbi: r.rbi ?? '',
-              ops: r.ops ?? '',
-            })
-          }}
+          className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-10 shrink-0"
+          value={player.position}
+          onChange={(e) => onChange({ ...player, position: e.target.value as Position })}
         >
-          <option value="">{player.name || '-- 選手を選択 --'}</option>
-          {sorted.map((r) => (
-            <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
-              {CATEGORY_SHORT[r.positionCategory]}: {r.name}
-            </option>
+          <option value="">--</option>
+          {POSITIONS.map((p) => (
+            <option key={p} value={p}>{p}</option>
           ))}
         </select>
-      ) : (
-        <input
-          className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
-          placeholder="名前"
-          value={player.name}
-          onChange={(e) => onChange({ ...player, name: e.target.value })}
-        />
+        {sorted.length > 0 ? (
+          <select
+            className="bg-gray-700 text-white rounded px-1 py-1 text-xs flex-1 min-w-0"
+            value=""
+            onChange={(e) => {
+              const r = sorted.find((r) => `${r.number}__${r.name}` === e.target.value)
+              if (r) onChange({
+                ...player,
+                name: r.name,
+                number: r.number,
+                battingAvg: r.battingAvg ?? '',
+                homeRuns: r.homeRuns ?? '',
+                rbi: r.rbi ?? '',
+                ops: r.ops ?? '',
+              })
+            }}
+          >
+            <option value="">{player.name || '-- 選手を選択 --'}</option>
+            {sorted.map((r) => (
+              <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
+                {CATEGORY_SHORT[r.positionCategory]}: {r.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className="bg-gray-700 text-white rounded px-2 py-1 text-xs flex-1 min-w-0"
+            placeholder="名前"
+            value={player.name}
+            onChange={(e) => onChange({ ...player, name: e.target.value })}
+          />
+        )}
+        <button
+          onClick={onSelect}
+          className={`text-xs px-2 py-1 rounded shrink-0 ${
+            isCurrent
+              ? 'bg-accent text-white font-bold'
+              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+          }`}
+          title="この打者を選択"
+        >
+          打席
+        </button>
+        {isAttacking && (
+          <div className="flex gap-0.5 shrink-0">
+            {(['first', 'second', 'third'] as const).map((base, i) => (
+              <button
+                key={base}
+                onClick={() => onSetBase(base)}
+                className={`text-xs w-6 py-1 rounded font-bold ${
+                  runnerBase === base
+                    ? 'bg-yellow-400 text-black'
+                    : 'bg-gray-700 hover:bg-gray-600 text-gray-400'
+                }`}
+                title={`${i + 1}塁に出塁`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={onScore}
+              disabled={!runnerBase}
+              className={`text-xs w-6 py-1 rounded font-bold ${
+                runnerBase
+                  ? 'bg-red-600 hover:bg-red-500 text-white'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+              title="生還（点数+1）"
+            >
+              H
+            </button>
+          </div>
+        )}
+      </div>
+      {/* 2行目: スタッツ（打率・HR・打点・OPS） */}
+      {showStats && (
+        <div className="flex items-center gap-1 pl-5">
+          <input
+            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+            placeholder="打率"
+            value={player.battingAvg || ''}
+            onChange={(e) => onChange({ ...player, battingAvg: e.target.value })}
+          />
+          <input
+            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-10 shrink-0"
+            placeholder="HR"
+            value={player.homeRuns || ''}
+            onChange={(e) => onChange({ ...player, homeRuns: e.target.value })}
+          />
+          <input
+            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-10 shrink-0"
+            placeholder="打点"
+            value={player.rbi || ''}
+            onChange={(e) => onChange({ ...player, rbi: e.target.value })}
+          />
+          <input
+            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+            placeholder="OPS"
+            value={player.ops || ''}
+            onChange={(e) => onChange({ ...player, ops: e.target.value })}
+          />
+        </div>
       )}
-      <input
-        className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-12 shrink-0"
-        placeholder="打率"
-        value={player.battingAvg || ''}
-        onChange={(e) => onChange({ ...player, battingAvg: e.target.value })}
-      />
-      <input
-        className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-10 shrink-0"
-        placeholder="HR"
-        value={player.homeRuns || ''}
-        onChange={(e) => onChange({ ...player, homeRuns: e.target.value })}
-      />
-      <input
-        className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-10 shrink-0"
-        placeholder="打点"
-        value={player.rbi || ''}
-        onChange={(e) => onChange({ ...player, rbi: e.target.value })}
-      />
-      <input
-        className="bg-gray-700 text-white rounded px-1 py-1 text-xs w-14 shrink-0"
-        placeholder="OPS"
-        value={player.ops || ''}
-        onChange={(e) => onChange({ ...player, ops: e.target.value })}
-      />
-      <button
-        onClick={onSelect}
-        className={`text-xs px-2 py-1 rounded shrink-0 ${
-          isCurrent
-            ? 'bg-accent text-white font-bold'
-            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-        }`}
-        title="この打者を選択"
-      >
-        打席
-      </button>
     </div>
   )
 }
@@ -192,6 +240,7 @@ function PitcherRow({
 /** 1チーム分の打順パネル */
 function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const [csvError, setCsvError] = useState<string | null>(null)
+  const [showStats, setShowStats] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const rosterFileRef = useRef<HTMLInputElement>(null)
 
@@ -203,12 +252,15 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const lineup = useGameStore((s) => side === 'away' ? s.awayLineup : s.homeLineup)
   const batterIdx = useGameStore((s) => side === 'away' ? s.awayBatterIndex : s.homeBatterIndex)
   const currentHalf = useGameStore((s) => s.currentHalf)
+  const runnerIndices = useGameStore((s) => s.runnerIndices)
   const setLineupPlayer = useGameStore((s) => s.setLineupPlayer)
   const setLineup = useGameStore((s) => s.setLineup)
   const selectBatter = useGameStore((s) => s.selectBatter)
   const nextBatter = useGameStore((s) => s.nextBatter)
   const prevBatter = useGameStore((s) => s.prevBatter)
   const setLineupDisplayTeam = useGameStore((s) => s.setLineupDisplayTeam)
+  const setRunnerAtBase = useGameStore((s) => s.setRunnerAtBase)
+  const scoreRunner = useGameStore((s) => s.scoreRunner)
 
   const isAttacking = (side === 'away' && currentHalf === 'top') ||
     (side === 'home' && currentHalf === 'bottom')
@@ -270,6 +322,17 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
           {!isAttacking && (
             <span className="text-gray-500 text-xs">守備中</span>
           )}
+          <button
+            onClick={() => setShowStats((v) => !v)}
+            className={`text-xs px-1.5 py-0.5 rounded border ${
+              showStats
+                ? 'border-gray-400 text-gray-200 bg-gray-600'
+                : 'border-gray-600 text-gray-500 bg-transparent'
+            }`}
+            title="スタッツ表示切替"
+          >
+            Stats
+          </button>
         </div>
         {isAttacking && (
           <div className="flex gap-1">
@@ -350,16 +413,27 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
 
       {/* ラインナップ（1-9番打者） */}
       <div className="space-y-0.5">
-        {lineup.slice(0, 9).map((player, idx) => (
-          <BatterRow
-            key={player.order}
-            player={player}
-            isCurrent={idx === batterIdx && isAttacking}
-            roster={roster}
-            onSelect={() => selectBatter(side, idx)}
-            onChange={(p) => setLineupPlayer(side, idx, p)}
-          />
-        ))}
+        {lineup.slice(0, 9).map((player, idx) => {
+          const runnerBase =
+            runnerIndices.first === idx ? 'first' as const :
+            runnerIndices.second === idx ? 'second' as const :
+            runnerIndices.third === idx ? 'third' as const : null
+          return (
+            <BatterRow
+              key={player.order}
+              player={player}
+              isCurrent={idx === batterIdx && isAttacking}
+              roster={roster}
+              onSelect={() => selectBatter(side, idx)}
+              onChange={(p) => setLineupPlayer(side, idx, p)}
+              isAttacking={isAttacking}
+              runnerBase={runnerBase}
+              onSetBase={(base) => setRunnerAtBase(base, runnerIndices[base] === idx ? null : idx)}
+              onScore={() => scoreRunner(idx)}
+              showStats={showStats}
+            />
+          )
+        })}
       </div>
 
       {/* 投手（10番目） */}

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PlayerInfo, Runners } from '../types'
+import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PlayerInfo, Runners, RunnerIndices } from '../types'
 import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
@@ -27,7 +27,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'awayBatterIndex', 'homeBatterIndex', 'playLog',
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
-  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats',
+  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'runnerIndices',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -98,6 +98,10 @@ interface GameActions {
   resetOverlayPositions: () => void
   setOverlayScale: (scale: number) => void
   setLineupDisplayTeam: (team: 'away' | 'home') => void
+  /** 塁に攻撃チーム打順インデックスをセットする。nullはクリア */
+  setRunnerAtBase: (base: keyof RunnerIndices, lineupIndex: number | null) => void
+  /** 指定打順インデックスの走者が得点する（点数+1・塁クリア） */
+  scoreRunner: (lineupIndex: number) => void
 }
 
 type GameStore = GameState & GameActions
@@ -152,6 +156,50 @@ export const useGameStore = create<GameStore>()(
 
       setRunner: (base, on) =>
         set((s) => ({ runners: { ...s.runners, [base]: on } })),
+
+      setRunnerAtBase: (base, lineupIndex) =>
+        set((s) => {
+          // 同じ選手が既に別の塁にいる場合は先にクリアする
+          const newRI = { ...s.runnerIndices }
+          const newRunners = { ...s.runners }
+          if (lineupIndex !== null) {
+            for (const b of ['first', 'second', 'third'] as const) {
+              if (b !== base && newRI[b] === lineupIndex) {
+                newRI[b] = null
+                newRunners[b] = false
+              }
+            }
+          }
+          newRI[base] = lineupIndex
+          newRunners[base] = lineupIndex !== null
+          return { runners: newRunners, runnerIndices: newRI }
+        }),
+
+      scoreRunner: (lineupIndex) =>
+        set((s) => {
+          const ri = s.runnerIndices
+          let base: keyof RunnerIndices | null = null
+          if (ri.first === lineupIndex) base = 'first'
+          else if (ri.second === lineupIndex) base = 'second'
+          else if (ri.third === lineupIndex) base = 'third'
+          if (!base) return s
+
+          const attackHalf = s.currentHalf === 'top' ? 'top' as const : 'bottom' as const
+          const innings = [...s.innings]
+          const idx = innings.findIndex((inn) => inn.inning === s.currentInning)
+          if (idx === -1) return s
+          const inn = { ...innings[idx]! }
+          inn[attackHalf] = (inn[attackHalf] ?? 0) + 1
+          innings[idx] = inn
+          const totals = recalcTotals({ ...extractGameState(s), innings })
+          return {
+            innings: totals.innings,
+            awayTotal: totals.awayTotal,
+            homeTotal: totals.homeTotal,
+            runners: { ...s.runners, [base]: false },
+            runnerIndices: { ...ri, [base]: null },
+          }
+        }),
 
       addRun: (team) =>
         set((s) => {
@@ -416,19 +464,19 @@ export const useGameStore = create<GameStore>()(
 
       rewindInning: () =>
         set((s) => {
+          const clearRunners = {
+            count: { balls: 0, strikes: 0, outs: 0 },
+            runners: { first: false, second: false, third: false },
+            runnerIndices: { first: null, second: null, third: null },
+          }
           if (s.currentHalf === 'bottom') {
-            return {
-              currentHalf: 'top' as const,
-              count: { balls: 0, strikes: 0, outs: 0 },
-              runners: { first: false, second: false, third: false },
-            }
+            return { ...clearRunners, currentHalf: 'top' as const }
           }
           if (s.currentInning <= 1) return s
           return {
+            ...clearRunners,
             currentInning: s.currentInning - 1,
             currentHalf: 'bottom' as const,
-            count: { balls: 0, strikes: 0, outs: 0 },
-            runners: { first: false, second: false, third: false },
           }
         }),
 
@@ -571,12 +619,19 @@ function applyWalk(s: GameState): Partial<GameState> {
   const newRunners = { first: true, second, third }
   let runsScored = 0
 
+  // runnerIndices も押し出し路理で更新
+  const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+  const ri = s.runnerIndices ?? { first: null, second: null, third: null }
+  const newRI = { ...ri, first: currentBatterIdx }
+
   if (first) {
     newRunners.second = true
+    newRI.second = ri.first
     if (second) {
       newRunners.third = true
+      newRI.third = ri.second
       if (third) {
-        // 満塁押し出し — 三塁走者が生還
+        // 満塁押し出し — 三塁走者が生還（ri.third は得点したので newRI には引き継がれない）
         runsScored = 1
       }
     }
@@ -585,6 +640,7 @@ function applyWalk(s: GameState): Partial<GameState> {
   const patch: Partial<GameState> = {
     count: { ...s.count, balls: 0, strikes: 0 },
     runners: newRunners,
+    runnerIndices: newRI,
   }
 
   if (runsScored > 0) {
@@ -663,6 +719,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
   const resetState: Partial<GameState> = {
     count: { balls: 0, strikes: 0, outs: 0 },
     runners: { first: false, second: false, third: false },
+    runnerIndices: { first: null, second: null, third: null },
     pitchCount: restoredPitchCount,
     pitcherStats,
     batter: newBatter,

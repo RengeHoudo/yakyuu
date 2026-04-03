@@ -13,6 +13,7 @@ import Ticker from '../components/overlay/Ticker'
 import EffectOverlay from '../components/overlay/EffectOverlay'
 import Mascot from '../components/overlay/Mascot'
 import WaitingScreen from '../components/overlay/WaitingScreen'
+import FieldingDiagram from '../components/overlay/FieldingDiagram'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -200,6 +201,11 @@ export default function OverlayPage() {
       {/* マスコット — 右下 */}
       <DraggableBox id="mascot">
         <Mascot />
+      </DraggableBox>
+
+      {/* 守備位置図 */}
+      <DraggableBox id="fieldingDiagram" scale={overlayScale}>
+        <FieldingDiagram />
       </DraggableBox>
 
       {/* エフェクト — 画面中央 */}
