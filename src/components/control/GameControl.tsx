@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
+import { fetchNpbRoster, NPB_TEAM_MAP } from '../../lib/npbRoster'
+import { useRosterStore } from '../../store/useRosterStore'
 
 const NPB_PRESETS = [
   { name: '広島', color: '#FF0000' },
@@ -40,6 +42,10 @@ export default function GameControl() {
   const [homeName, setHomeName] = useState(homeTeam.name)
   const [awayColor, setAwayColor] = useState(awayTeam.color)
   const [homeColor, setHomeColor] = useState(homeTeam.color)
+  const [loadingTeam, setLoadingTeam] = useState<'away' | 'home' | null>(null)
+  const [rosterError, setRosterError] = useState<string | null>(null)
+  const [autoFetchRoster, setAutoFetchRoster] = useState(true)
+  const setRoster = useRosterStore((s) => s.setRoster)
 
   // ストア側が変わったらローカル state を追従（IDB復元・newGame 等）
   useEffect(() => { setAwayName(awayTeam.name) }, [awayTeam.name])
@@ -57,6 +63,37 @@ export default function GameControl() {
 
   /** 入力欄からフォーカスが外れたら自動でストアに反映 */
   const handleBlur = () => { applyTeams() }
+
+  /** NPBプリセット選択: チーム名/カラーを即時反映し、名簿を非同期取得 */
+  const handlePreset = async (team: 'away' | 'home', p: typeof NPB_PRESETS[number]) => {
+    if (team === 'away') {
+      setAwayName(p.name); setAwayColor(p.color)
+      setTeamName('away', p.name, p.name); setTeamColor('away', p.color)
+    } else {
+      setHomeName(p.name); setHomeColor(p.color)
+      setTeamName('home', p.name, p.name); setTeamColor('home', p.color)
+    }
+
+    // セントラル・パシフィック等非対応チームはフェッチしない
+    const keyword = NPB_TEAM_MAP[p.name]
+    if (keyword === null || keyword === undefined) return
+    if (!autoFetchRoster) return
+
+    setRosterError(null)
+    setLoadingTeam(team)
+    try {
+      const roster = await fetchNpbRoster(p.name)
+      if (roster.length > 0) {
+        setRoster(team, roster)
+      } else {
+        setRosterError('NPBサイトから選手データを取得できませんでした（ページ構造が変更された可能性あり）。「選手名簿 CSV 読込」で手動インポートしてください。')
+      }
+    } catch {
+      setRosterError('NPB名簿の取得に失敗しました。開発サーバー（npm run dev）で起動しているか確認してください。手動でCSVをインポートすることもできます。')
+    } finally {
+      setLoadingTeam(null)
+    }
+  }
 
   const handleNewGame = () => {
     if (confirm('新しい試合を開始しますか？全データがリセットされます。')) {
@@ -89,18 +126,18 @@ export default function GameControl() {
             <span className="text-gray-500 text-xs font-mono">{awayColor}</span>
           </div>
           <select
-            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm"
+            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm disabled:opacity-50"
             value=""
+            disabled={loadingTeam !== null}
             onChange={(e) => {
               const p = NPB_PRESETS.find((p) => p.name === e.target.value)
               if (!p) return
-              setAwayName(p.name)
-              setAwayColor(p.color)
-              setTeamName('away', p.name, p.name)
-              setTeamColor('away', p.color)
+              void handlePreset('away', p)
             }}
           >
-            <option value="">プリセットから選択...</option>
+            <option value="">
+              {loadingTeam === 'away' ? '取得中...' : 'プリセットから選択...'}
+            </option>
             {NPB_PRESETS.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
@@ -126,23 +163,42 @@ export default function GameControl() {
             <span className="text-gray-500 text-xs font-mono">{homeColor}</span>
           </div>
           <select
-            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm"
+            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm disabled:opacity-50"
             value=""
+            disabled={loadingTeam !== null}
             onChange={(e) => {
               const p = NPB_PRESETS.find((p) => p.name === e.target.value)
               if (!p) return
-              setHomeName(p.name)
-              setHomeColor(p.color)
-              setTeamName('home', p.name, p.name)
-              setTeamColor('home', p.color)
+              void handlePreset('home', p)
             }}
           >
-            <option value="">プリセットから選択...</option>
+            <option value="">
+              {loadingTeam === 'home' ? '取得中...' : 'プリセットから選択...'}
+            </option>
             {NPB_PRESETS.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
           </select>
         </div>
+      </div>
+
+      {rosterError && (
+        <div className="bg-orange-900/50 border border-orange-500 rounded px-3 py-2 text-orange-300 text-xs">
+          {rosterError}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 text-sm">
+        <input
+          id="auto-fetch-roster"
+          type="checkbox"
+          checked={autoFetchRoster}
+          onChange={(e) => { setAutoFetchRoster(e.target.checked); setRosterError(null) }}
+          className="accent-accent w-4 h-4 cursor-pointer"
+        />
+        <label htmlFor="auto-fetch-roster" className="text-gray-300 cursor-pointer select-none">
+          プリセット選択時に名簿を自動取得
+        </label>
       </div>
 
       <div className="flex gap-2">

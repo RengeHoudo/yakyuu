@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
+import { useRosterStore } from '../../store/useRosterStore'
 import type { LineupPlayer, Position, PositionCategory, RosterPlayer } from '../../types'
 import { CARP_LINEUP, HAWKS_LINEUP } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
@@ -60,10 +61,10 @@ function BatterRow({
               ...player,
               name: r.name,
               number: r.number,
-              battingAvg: r.battingAvg ?? player.battingAvg,
-              homeRuns: r.homeRuns ?? player.homeRuns,
-              rbi: r.rbi ?? player.rbi,
-              ops: r.ops ?? player.ops,
+              battingAvg: r.battingAvg ?? '',
+              homeRuns: r.homeRuns ?? '',
+              rbi: r.rbi ?? '',
+              ops: r.ops ?? '',
             })
           }}
         >
@@ -147,7 +148,7 @@ function PitcherRow({
           value=""
           onChange={(e) => {
             const r = pitchers.find((r) => `${r.number}__${r.name}` === e.target.value)
-            if (r) onChange({ ...player, name: r.name, number: r.number })
+            if (r) onChange({ ...player, name: r.name, number: r.number, appearances: '', record: '' })
           }}
         >
           <option value="">{player.name || '-- 投手を選択 --'}</option>
@@ -191,9 +192,12 @@ function PitcherRow({
 /** 1チーム分の打順パネル */
 function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const [csvError, setCsvError] = useState<string | null>(null)
-  const [roster, setRoster] = useState<RosterPlayer[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const rosterFileRef = useRef<HTMLInputElement>(null)
+
+  const roster = useRosterStore((s) => side === 'away' ? s.awayRoster : s.homeRoster)
+  const setRoster = useRosterStore((s) => s.setRoster)
+  const clearRoster = useRosterStore((s) => s.clearRoster)
 
   const team = useGameStore((s) => side === 'away' ? s.awayTeam : s.homeTeam)
   const lineup = useGameStore((s) => side === 'away' ? s.awayLineup : s.homeLineup)
@@ -236,7 +240,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
     reader.onload = () => {
       try {
         const players = parseRosterCsv(reader.result as string)
-        setRoster(players)
+        setRoster(side, players)
         setCsvError(null)
       } catch (err) {
         setCsvError(err instanceof Error ? err.message : '選手名簿の読み込みに失敗しました')
@@ -318,7 +322,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
         </button>
         {roster.length > 0 && (
           <button
-            onClick={() => setRoster([])}
+            onClick={() => clearRoster(side)}
             className="text-gray-500 hover:text-gray-300 text-xs px-1"
             title="名簿をクリア"
           >

@@ -10,7 +10,7 @@ const VALID_CATEGORIES: PositionCategory[] = ['投手', '捕手', '内野手', '
  * - 全角英数字・記号（！-～）→ 半角
  * - 連続スペース → 1つに
  */
-function normalizePlayerName(name: string): string {
+export function normalizePlayerName(name: string): string {
   return name
     .replace(/\u3000/g, ' ')
     .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
