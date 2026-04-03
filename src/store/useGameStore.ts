@@ -58,6 +58,8 @@ interface GameActions {
   setBatter: (info: PlayerInfo) => void
   setPitcher: (info: PlayerInfo) => void
   addHit: (team: 'away' | 'home') => void
+  recordHit: () => void
+  recordHitByPitch: () => void
   addError: (team: 'away' | 'home') => void
   setHits: (team: 'away' | 'home', count: number) => void
   setErrors: (team: 'away' | 'home', count: number) => void
@@ -106,7 +108,7 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const balls = s.count.balls + 1
           if (balls >= 4) {
-            return { ...applyWalk(s), pitchCount: s.pitchCount + 1 }
+            return { ...applyWalk(s), ...advanceBatterPatch(s), pitchCount: s.pitchCount + 1 }
           }
           return { count: { ...s.count, balls }, pitchCount: s.pitchCount + 1 }
         }),
@@ -118,9 +120,14 @@ export const useGameStore = create<GameStore>()(
             const outs = s.count.outs + 1
             if (outs >= 3) {
               // 最後の1球を旧投手に属させた後にイニング進行（pitchCount を上書きしない）
-              return advanceInningPatch({ ...extractGameState(s), pitchCount: s.pitchCount + 1 })
+              // まず現在の打者インデックスを進めてから攻守交代
+              const sWithPitch = { ...extractGameState(s), pitchCount: s.pitchCount + 1 } as GameState
+              return { ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
             }
-            return { count: { balls: 0, strikes: 0, outs }, pitchCount: s.pitchCount + 1 }
+            // 三振（3アウト未満）: 打者を次に進める
+            const newPitchCount = s.pitchCount + 1
+            const sWithOuts = { ...extractGameState(s), count: { ...s.count, outs }, pitchCount: newPitchCount }
+            return { ...advanceBatterPatch(sWithOuts), pitchCount: newPitchCount }
           }
           return { count: { ...s.count, strikes }, pitchCount: s.pitchCount + 1 }
         }),
@@ -129,15 +136,17 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const outs = s.count.outs + 1
           if (outs >= 3) {
-            return advanceInningPatch(s)
+            // まず現在の打者インデックスを進めてから攻守交代
+            return { ...advanceBatterPatch(s), ...advanceInningPatch(s) }
           }
-          return { count: { balls: 0, strikes: 0, outs } }
+          // アウト（3アウト未満）: 打者を次に進める
+          return advanceBatterPatch({ ...extractGameState(s), count: { ...s.count, outs } })
         }),
 
       resetCount: () =>
         set((s) => ({ count: { ...s.count, balls: 0, strikes: 0 } })),
 
-      advanceInning: () => set((s) => advanceInningPatch(s)),
+      advanceInning: () => set((s) => ({ ...advanceBatterPatch(s), ...advanceInningPatch(s) })),
 
       setRunner: (base, on) =>
         set((s) => ({ runners: { ...s.runners, [base]: on } })),
@@ -196,6 +205,22 @@ export const useGameStore = create<GameStore>()(
         set((s) => team === 'away'
           ? { awayHits: s.awayHits + 1 }
           : { homeHits: s.homeHits + 1 }),
+
+      recordHit: () =>
+        set((s) => {
+          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
+          const hitsPatch = attackTeam === 'away'
+            ? { awayHits: s.awayHits + 1 }
+            : { homeHits: s.homeHits + 1 }
+          return { ...hitsPatch, pitchCount: s.pitchCount + 1, ...advanceBatterPatch(s) }
+        }),
+
+      recordHitByPitch: () =>
+        set((s) => ({
+          ...applyWalk(s),
+          ...advanceBatterPatch(s),
+          pitchCount: s.pitchCount + 1,
+        })),
 
       addError: (team) =>
         set((s) => team === 'away'
@@ -498,6 +523,30 @@ export const useGameStore = create<GameStore>()(
 useGameStore.subscribe((state) => {
   broadcastState(extractGameState(state))
 })
+
+/** 打者交代: 次の打者をセットし B/S カウントをリセット（アウト数は維持） */
+function advanceBatterPatch(s: GameState): Partial<GameState> {
+  const isAway = s.currentHalf === 'top'
+  const key = isAway ? 'awayLineup' : 'homeLineup'
+  const idxKey = isAway ? 'awayBatterIndex' : 'homeBatterIndex'
+  const currentIdx = s[idxKey]
+  const nextIdx = (currentIdx + 1) % 9
+  const player = s[key][nextIdx]
+  const countReset = { ...s.count, balls: 0, strikes: 0 }
+  if (!player || !player.name) {
+    return { count: countReset }
+  }
+  return {
+    [idxKey]: nextIdx,
+    batter: {
+      name: player.name,
+      number: player.number,
+      stat: formatBatterStat(player),
+      statLabel: '',
+    },
+    count: countReset,
+  }
+}
 
 /** 四球・死球: 打者→一塁、フォースで走者押し出し、満塁なら得点 */
 function applyWalk(s: GameState): Partial<GameState> {

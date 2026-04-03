@@ -11,6 +11,8 @@ export default function CountControl() {
   const subtractOut = useGameStore((s) => s.subtractOut)
   const pitchCount = useGameStore((s) => s.pitchCount)
   const setPitchCount = useGameStore((s) => s.setPitchCount)
+  const recordHit = useGameStore((s) => s.recordHit)
+  const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -146,6 +148,25 @@ export default function CountControl() {
         >
           カウントリセット
         </button>
+      </div>
+
+      {/* 出塁 */}
+      <div className="pt-2 border-t border-gray-700 space-y-1">
+        <p className="text-gray-400 text-xs">出塁</p>
+        <div className="flex gap-2">
+          <button
+            onClick={recordHit}
+            className="flex-1 bg-blue-700 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm font-bold"
+          >
+            ヒット
+          </button>
+          <button
+            onClick={recordHitByPitch}
+            className="flex-1 bg-orange-700 hover:bg-orange-600 text-white px-3 py-2 rounded text-sm font-bold"
+          >
+            死球
+          </button>
+        </div>
       </div>
     </div>
   )
