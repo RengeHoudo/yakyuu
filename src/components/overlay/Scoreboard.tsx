@@ -59,10 +59,12 @@ export default function Scoreboard() {
                     style={{ backgroundColor: awayTeam.color }}
                   />
                   <div className="flex items-center gap-1.5 px-2">
-                    {currentHalf === 'top' && (
-                      <span className="text-[8px] text-yellow-400">▶</span>
-                    )}
-                    <span className="text-white font-bold text-sm">{awayTeam.name}</span>
+                    <div className="w-2 flex-shrink-0 flex items-center justify-center">
+                      {currentHalf === 'top' && (
+                        <span className="text-[8px] text-yellow-400">▶</span>
+                      )}
+                    </div>
+                    <span className="text-white font-bold text-sm whitespace-nowrap">{awayTeam.name}</span>
                   </div>
                 </div>
               </td>
@@ -100,10 +102,12 @@ export default function Scoreboard() {
                     style={{ backgroundColor: homeTeam.color }}
                   />
                   <div className="flex items-center gap-1.5 px-2">
-                    {currentHalf === 'bottom' && (
-                      <span className="text-[8px] text-yellow-400">▶</span>
-                    )}
-                    <span className="text-white font-bold text-sm">{homeTeam.name}</span>
+                    <div className="w-2 flex-shrink-0 flex items-center justify-center">
+                      {currentHalf === 'bottom' && (
+                        <span className="text-[8px] text-yellow-400">▶</span>
+                      )}
+                    </div>
+                    <span className="text-white font-bold text-sm whitespace-nowrap">{homeTeam.name}</span>
                   </div>
                 </div>
               </td>

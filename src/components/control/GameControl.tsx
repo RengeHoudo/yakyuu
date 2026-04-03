@@ -1,6 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 
+const NPB_PRESETS = [
+  { name: '広島', color: '#FF0000' },
+  { name: '巨人', color: '#F97709' },
+  { name: '阪神', color: '#FFE201' },
+  { name: '中日', color: '#002569' },
+  { name: 'DeNA', color: '#0091E1' },
+  { name: 'ヤクルト', color: '#98C145' },
+  { name: 'ソフトバンク', color: '#FCC700' },
+  { name: 'オリックス', color: '#A47B01' },
+  { name: 'ロッテ', color: '#C0C0C0' },
+  { name: '楽天', color: '#870010' },
+  { name: '日ハム', color: '#01609A' },
+  { name: '西武', color: '#336487' },
+  { name: 'セントラル', color: '#0F8F2C' },
+  { name: 'パシフィック', color: '#61AFE0' },
+] as const
+
 export default function GameControl() {
   const awayTeam = useGameStore((s) => s.awayTeam)
   const homeTeam = useGameStore((s) => s.homeTeam)
@@ -71,6 +88,23 @@ export default function GameControl() {
             />
             <span className="text-gray-500 text-xs font-mono">{awayColor}</span>
           </div>
+          <select
+            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm"
+            value=""
+            onChange={(e) => {
+              const p = NPB_PRESETS.find((p) => p.name === e.target.value)
+              if (!p) return
+              setAwayName(p.name)
+              setAwayColor(p.color)
+              setTeamName('away', p.name, p.name)
+              setTeamColor('away', p.color)
+            }}
+          >
+            <option value="">プリセットから選択...</option>
+            {NPB_PRESETS.map((p) => (
+              <option key={p.name} value={p.name}>{p.name}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-2">
           <label className="text-gray-400 text-xs">ホーム（後攻）</label>
@@ -91,6 +125,23 @@ export default function GameControl() {
             />
             <span className="text-gray-500 text-xs font-mono">{homeColor}</span>
           </div>
+          <select
+            className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm"
+            value=""
+            onChange={(e) => {
+              const p = NPB_PRESETS.find((p) => p.name === e.target.value)
+              if (!p) return
+              setHomeName(p.name)
+              setHomeColor(p.color)
+              setTeamName('home', p.name, p.name)
+              setTeamColor('home', p.color)
+            }}
+          >
+            <option value="">プリセットから選択...</option>
+            {NPB_PRESETS.map((p) => (
+              <option key={p.name} value={p.name}>{p.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
