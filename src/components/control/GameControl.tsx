@@ -12,7 +12,7 @@ const NPB_PRESETS = [
   { name: 'オリックス', color: '#A47B01' },
   { name: 'ロッテ', color: '#C0C0C0' },
   { name: '楽天', color: '#870010' },
-  { name: '日ハム', color: '#01609A' },
+  { name: '日本ハム', color: '#01609A' },
   { name: '西武', color: '#336487' },
   { name: 'セントラル', color: '#0F8F2C' },
   { name: 'パシフィック', color: '#61AFE0' },
