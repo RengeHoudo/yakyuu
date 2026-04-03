@@ -396,6 +396,23 @@ describe('四球 (applyWalk via addBall x4)', () => {
     expect(s().count.balls).toBe(0)
     expect(s().count.strikes).toBe(0)
   })
+
+  it('四球後: 次の打者に移行する', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+    })
+    walk()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('四球後: ラインアップ未設定でもクラッシュしない', () => {
+    useGameStore.setState({ awayLineup: makeEmptyLineup() })
+    expect(() => walk()).not.toThrow()
+    expect(s().runners.first).toBe(true)
+  })
 })
 
 // ─────────────────────────────────────────────
@@ -1516,5 +1533,230 @@ describe('resetOverlayPositions', () => {
     s().setOverlayPosition('scoreboard', { x: 999, y: 999 })
     s().resetOverlayPositions()
     expect(s().overlayPositions['scoreboard']).toEqual({ x: 24, y: 24 })
+  })
+})
+
+// ─────────────────────────────────────────────
+// Bug#5 アウト時・三振時の次打者自動移行
+// ─────────────────────────────────────────────
+
+describe('Bug#5 アウト時の次打者自動移行 (addOut)', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 0 },
+    })
+  })
+
+  it('B5-1: 1アウト時、次の打者にセットされる', () => {
+    s().addOut()
+    expect(s().count.outs).toBe(1)
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('B5-2: 2アウト連続で打者が2つ進む', () => {
+    useGameStore.setState({ awayBatterIndex: 3 })
+    s().addOut()
+    s().addOut()
+    expect(s().count.outs).toBe(2)
+    expect(s().awayBatterIndex).toBe(5)
+  })
+
+  it('B5-3: ラインアップ未設定でもクラッシュしない（countのみリセット）', () => {
+    useGameStore.setState({ awayLineup: makeEmptyLineup() })
+    expect(() => s().addOut()).not.toThrow()
+    expect(s().count.outs).toBe(1)
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('B5-4: 3アウト時はイニング進行（既存動作）', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 0, outs: 2 }, currentHalf: 'top' })
+    s().addOut()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('B5-5: 3アウト時、攻撕側の打者インデックスが進む（次イニングの先頭打者になる）', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+    })
+    s().addOut()
+    // 攻守交代後、awayのインデックスが 3→ 4 に進んでいることを確認
+    expect(s().awayBatterIndex).toBe(4)
+  })
+})
+
+describe('Bug#5 三振時の次打者自動移行 (addStrike)', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+    })
+  })
+
+  it('B5S-1: 三振（outs=0→1）、次の打者にセットされる', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 } })
+    s().addStrike()
+    expect(s().count.outs).toBe(1)
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('B5S-2: 三振（outs=1→2）、次の打者にセットされる', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 1 }, awayBatterIndex: 3 })
+    s().addStrike()
+    expect(s().count.outs).toBe(2)
+    expect(s().awayBatterIndex).toBe(4)
+  })
+
+  it('B5S-3: 3ストライク3アウト → advanceInning（既存動作）', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 2 }, currentHalf: 'top' })
+    s().addStrike()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('B5S-4: 三振3アウト時、攻撕側の打者インデックスが進む', () => {
+    useGameStore.setState({
+      count: { balls: 0, strikes: 2, outs: 2 },
+      awayBatterIndex: 5,
+      currentHalf: 'top',
+    })
+    s().addStrike()
+    expect(s().awayBatterIndex).toBe(6)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordHit ヒット打者記録
+// ─────────────────────────────────────────────
+
+describe('recordHit ヒット打者記録', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      homeBatterIndex: 0,
+      currentHalf: 'top',
+      awayHits: 0,
+      homeHits: 0,
+      pitchCount: 10,
+      count: { balls: 2, strikes: 1, outs: 1 },
+    })
+  })
+
+  it('RH-1: top（away batting）→ awayHits が +1', () => {
+    s().recordHit()
+    expect(s().awayHits).toBe(1)
+  })
+
+  it('RH-2: bottom（home batting）→ homeHits が +1', () => {
+    useGameStore.setState({ currentHalf: 'bottom', homeBatterIndex: 0 })
+    s().recordHit()
+    expect(s().homeHits).toBe(1)
+  })
+
+  it('RH-3: balls=0, strikes=0 にリセット', () => {
+    s().recordHit()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('RH-4: outs は変わらない', () => {
+    s().recordHit()
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('RH-5: 打者が次に進む', () => {
+    s().recordHit()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('RH-6: pitchCount が +1', () => {
+    s().recordHit()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('RH-7: ラインアップ未設定でもクラッシュしない', () => {
+    useGameStore.setState({ awayLineup: makeEmptyLineup() })
+    expect(() => s().recordHit()).not.toThrow()
+    expect(s().awayHits).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordHitByPitch 死球打者記録
+// ─────────────────────────────────────────────
+
+describe('recordHitByPitch 死球打者記録', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      pitchCount: 10,
+      count: { balls: 3, strikes: 1, outs: 0 },
+      runners: { first: false, second: false, third: false },
+    })
+  })
+
+  it('RBP-1: 打者が一塩に出塔する（フォアボールと同じ）', () => {
+    s().recordHitByPitch()
+    expect(s().runners.first).toBe(true)
+  })
+
+  it('RBP-2: balls=0, strikes=0 にリセット', () => {
+    s().recordHitByPitch()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('RBP-3: outs は変わらない', () => {
+    s().recordHitByPitch()
+    expect(s().count.outs).toBe(0)
+  })
+
+  it('RBP-4: 打者が次に進む', () => {
+    s().recordHitByPitch()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('RBP-5: pitchCount が +1', () => {
+    s().recordHitByPitch()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('RBP-6: 満塔時は押し出し得点（applyWalkと同じ）', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: true },
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      awayTotal: 0,
+    })
+    s().recordHitByPitch()
+    expect(s().innings[0]?.top).toBe(1)
+    expect(s().awayTotal).toBe(1)
+  })
+
+  it('RBP-7: 一塁走者あり→一・二塁になる', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false } })
+    s().recordHitByPitch()
+    expect(s().runners).toEqual({ first: true, second: true, third: false })
   })
 })
