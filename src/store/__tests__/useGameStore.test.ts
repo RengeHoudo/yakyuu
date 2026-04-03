@@ -256,30 +256,55 @@ describe('advanceInning', () => {
     expect(s().runners).toEqual({ first: false, second: false, third: false })
   })
 
-  // [バグ記録] pitchCount はリセットされない（現状の挙動）
-  it('[バグ記録] pitchCount はリセットされない', () => {
+  it('advanceInning で pitchCount が 0 にリセットされる', () => {
     useGameStore.setState({ pitchCount: 87 })
     s().advanceInning()
-    expect(s().pitchCount).toBe(87) // バグ: 0 になるべき
+    expect(s().pitchCount).toBe(0)
   })
 
-  // [バグ記録] batter は空になる（lineup から選ばれない）
-  it('[バグ記録] batter が空の initialPlayerInfo になる（打線から打者が選ばれない）', () => {
+  it('advanceInning 後 batter に新しい攻撃チームの打者がセットされる', () => {
     useGameStore.setState({
       awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      homeBatterIndex: 0,
       currentHalf: 'top',
     })
-    s().advanceInning() // top → bottom
-    // batter が空になる（lineup の先頭打者が自動セットされるべきだが現状はされない）
-    expect(s().batter).toEqual(initialPlayerInfo)
+    s().advanceInning() // top → bottom (home が攻撃)
+    expect(s().batter.name).toBe(CARP_LINEUP[0]!.name)
   })
 
-  // [バグ記録] lineupDisplayTeam は攻守交代後も変わらない
-  it('[バグ記録] lineupDisplayTeam は攻守交代しても変わらない', () => {
+  it('advanceInning 後 lineupDisplayTeam が攻撃チームに更新される（top→bottom）', () => {
     useGameStore.setState({ currentHalf: 'top', lineupDisplayTeam: 'away' })
     s().advanceInning() // top → bottom (ホームが攻撃側になる)
-    // lineupDisplayTeam は 'away' のまま（'home' になるべきだが現状はならない）
-    expect(s().lineupDisplayTeam).toBe('away')
+    expect(s().lineupDisplayTeam).toBe('home')
+  })
+
+  it('無得点で表→裏に進むと top が 0 に確定される', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: null, bottom: null }],
+    })
+    s().advanceInning() // 無得点で表→裏
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(0)
+  })
+
+  it('無得点で裏→次イニング表に進むと bottom が 0 に確定される', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'bottom',
+      innings: [{ inning: 1, top: 1, bottom: null }],
+    })
+    s().advanceInning() // 無得点で裏→次イニング表
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.bottom).toBe(0)
+  })
+
+  it('autoChangeEffect=true のとき activeEffect が "change" にセットされる', () => {
+    useGameStore.setState({ autoChangeEffect: true })
+    s().advanceInning()
+    expect(s().activeEffect).toBe('change')
   })
 })
 
@@ -437,6 +462,17 @@ describe('subtractRun', () => {
     expect(s().awayTotal).toBe(2)
   })
 
+  it("subtractRun('home'): 現在イニングの bottom が -1 される", () => {
+    useGameStore.setState({
+      currentInning: 1,
+      innings: [{ inning: 1, top: 0, bottom: 2 }],
+      homeTotal: 2,
+    })
+    s().subtractRun('home')
+    expect(s().innings[0]?.bottom).toBe(1)
+    expect(s().homeTotal).toBe(1)
+  })
+
   it('top=0 のとき変化なし（0未満にならない）', () => {
     useGameStore.setState({
       currentInning: 1,
@@ -458,7 +494,7 @@ describe('subtractRun', () => {
 })
 
 describe('setInningScore', () => {
-  it('指定イニング・halfのスコアを直接セットできる', () => {
+  it('指定イニング・halfのスコアを直接セットできる（top）', () => {
     useGameStore.setState({
       innings: [
         { inning: 1, top: 0, bottom: 0 },
@@ -469,6 +505,15 @@ describe('setInningScore', () => {
     })
     s().setInningScore(2, 'top', 5)
     expect(s().innings[1]?.top).toBe(5)
+  })
+
+  it('指定イニング・halfのスコアを直接セットできる（bottom）', () => {
+    useGameStore.setState({
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      homeTotal: 0,
+    })
+    s().setInningScore(1, 'bottom', 3)
+    expect(s().innings[0]?.bottom).toBe(3)
   })
 
   it('セット後に awayTotal が再計算される', () => {
@@ -482,6 +527,15 @@ describe('setInningScore', () => {
     })
     s().setInningScore(2, 'top', 3)
     expect(s().awayTotal).toBe(4)
+  })
+
+  it('存在しないイニング番号のとき変化なし', () => {
+    useGameStore.setState({
+      innings: [{ inning: 1, top: 0, bottom: 0 }],
+      awayTotal: 0,
+    })
+    s().setInningScore(99, 'top', 5)
+    expect(s().awayTotal).toBe(0)
   })
 })
 
@@ -668,11 +722,10 @@ describe('投球数', () => {
     expect(s().pitchCount).toBe(100)
   })
 
-  // [バグ記録] advanceInning で pitchCount がリセットされない
-  it('[バグ記録] advanceInning 後も pitchCount がリセットされない', () => {
+  it('advanceInning で pitchCount が 0 にリセットされる（再掲: Bug#1-1）', () => {
     useGameStore.setState({ pitchCount: 87, currentHalf: 'top' })
     s().advanceInning()
-    expect(s().pitchCount).toBe(87) // バグ: 0 になるべき
+    expect(s().pitchCount).toBe(0)
   })
 })
 
@@ -807,5 +860,661 @@ describe('setTicker', () => {
     useGameStore.setState({ ticker: 'some text' })
     s().setTicker('')
     expect(s().ticker).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────
+// 走者状態
+// ─────────────────────────────────────────────
+
+describe('setRunner', () => {
+  it('一塁走者をセットできる', () => {
+    s().setRunner('first', true)
+    expect(s().runners.first).toBe(true)
+  })
+
+  it('二塁走者をセットできる', () => {
+    s().setRunner('second', true)
+    expect(s().runners.second).toBe(true)
+  })
+
+  it('三塁走者をセットできる', () => {
+    s().setRunner('third', true)
+    expect(s().runners.third).toBe(true)
+  })
+
+  it('走者を外せる（false にできる）', () => {
+    useGameStore.setState({ runners: { first: true, second: true, third: true } })
+    s().setRunner('second', false)
+    expect(s().runners.second).toBe(false)
+    expect(s().runners.first).toBe(true)  // 他は変わらない
+    expect(s().runners.third).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────
+// 打順設定
+// ─────────────────────────────────────────────
+
+describe('setLineup', () => {
+  it("away チームの打順を設定できる", () => {
+    s().setLineup('away', [...CARP_LINEUP])
+    expect(s().awayLineup).toHaveLength(10)
+    expect(s().awayLineup[0]?.name).toBe('秋山 翔吾')
+  })
+
+  it("home チームの打順を設定できる", () => {
+    s().setLineup('home', [...CARP_LINEUP])
+    expect(s().homeLineup[3]?.name).toBe('坂倉 将吾')
+  })
+})
+
+describe('setLineupPlayer', () => {
+  beforeEach(() => {
+    useGameStore.setState({ awayLineup: [...CARP_LINEUP] })
+  })
+
+  it('指定 index の選手を更新できる', () => {
+    const newPlayer = { order: 1, name: '新選手', number: '10', position: '左' as const }
+    s().setLineupPlayer('away', 0, newPlayer)
+    expect(s().awayLineup[0]?.name).toBe('新選手')
+  })
+
+  it('他の選手は変わらない', () => {
+    const newPlayer = { order: 3, name: '代打選手', number: '99', position: '右' as const }
+    s().setLineupPlayer('away', 2, newPlayer)
+    expect(s().awayLineup[0]?.name).toBe('秋山 翔吾')
+    expect(s().awayLineup[1]?.name).toBe('野間 峻祥')
+  })
+})
+
+// ─────────────────────────────────────────────
+// replaceState
+// ─────────────────────────────────────────────
+
+describe('replaceState', () => {
+  it('渡したステートでストアが完全に上書きされる', () => {
+    const partial = {
+      ...initialGameState,
+      currentInning: 7,
+      awayTotal: 5,
+      homeTotal: 3,
+    }
+    s().replaceState(partial)
+    expect(s().currentInning).toBe(7)
+    expect(s().awayTotal).toBe(5)
+    expect(s().homeTotal).toBe(3)
+  })
+})
+
+// ─────────────────────────────────────────────
+// ゲームタイマー
+// ─────────────────────────────────────────────
+
+describe('startGameTimer / stopGameTimer', () => {
+  it('startGameTimer: gameStartTime が現在時刻付近にセットされ showWaitingScreen=false になる', () => {
+    const before = Date.now()
+    s().startGameTimer()
+    const after = Date.now()
+    expect(s().gameStartTime).toBeGreaterThanOrEqual(before)
+    expect(s().gameStartTime).toBeLessThanOrEqual(after)
+    expect(s().showWaitingScreen).toBe(false)
+  })
+
+  it('stopGameTimer: gameStartTime が null になる', () => {
+    s().startGameTimer()
+    s().stopGameTimer()
+    expect(s().gameStartTime).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────
+// エフェクト
+// ─────────────────────────────────────────────
+
+describe('triggerEffect', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('type を渡すと activeEffect と effectTimestamp がセットされる', () => {
+    s().triggerEffect('homerun')
+    expect(s().activeEffect).toBe('homerun')
+    expect(s().effectTimestamp).toBeGreaterThan(0)
+  })
+
+  it('6秒後に activeEffect が自動クリアされる', () => {
+    s().triggerEffect('strikeout')
+    vi.advanceTimersByTime(6000)
+    expect(s().activeEffect).toBeNull()
+    expect(s().effectTimestamp).toBe(0)
+  })
+
+  it('null を渡すと即座にクリアされる', () => {
+    s().triggerEffect('homerun')
+    s().triggerEffect(null)
+    expect(s().activeEffect).toBeNull()
+  })
+
+  it('連続して呼んでも最後の type が有効になる', () => {
+    s().triggerEffect('homerun')
+    s().triggerEffect('strikeout')
+    expect(s().activeEffect).toBe('strikeout')
+  })
+
+  it('前のタイマーより先に 6秒が来ても activeEffect がクリアされる', () => {
+    s().triggerEffect('homerun')
+    s().triggerEffect('double')
+    vi.advanceTimersByTime(6000)
+    expect(s().activeEffect).toBeNull()
+  })
+})
+
+describe('setAutoChangeEffect', () => {
+  it('true に設定できる', () => {
+    useGameStore.setState({ autoChangeEffect: false })
+    s().setAutoChangeEffect(true)
+    expect(s().autoChangeEffect).toBe(true)
+  })
+
+  it('false に設定できる', () => {
+    useGameStore.setState({ autoChangeEffect: true })
+    s().setAutoChangeEffect(false)
+    expect(s().autoChangeEffect).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// マスコット
+// ─────────────────────────────────────────────
+
+describe('setShowMascot', () => {
+  it('true に設定できる', () => {
+    s().setShowMascot(true)
+    expect(s().showMascot).toBe(true)
+  })
+
+  it('false に設定できる', () => {
+    useGameStore.setState({ showMascot: true })
+    s().setShowMascot(false)
+    expect(s().showMascot).toBe(false)
+  })
+})
+
+describe('setMascotMode', () => {
+  it('"celebration" に設定できる', () => {
+    s().setMascotMode('celebration')
+    expect(s().mascotMode).toBe('celebration')
+  })
+
+  it('"hidden" に設定できる', () => {
+    s().setMascotMode('hidden')
+    expect(s().mascotMode).toBe('hidden')
+  })
+})
+
+describe('setMascotImage', () => {
+  it('data URL を設定できる', () => {
+    s().setMascotImage('celebration', 'data:image/png;base64,abc')
+    expect(s().mascotImages['celebration']).toBe('data:image/png;base64,abc')
+  })
+
+  it('null を渡すとそのキーが削除される', () => {
+    useGameStore.setState({ mascotImages: { celebration: 'data:image/png;base64,abc' } })
+    s().setMascotImage('celebration', null)
+    expect(s().mascotImages['celebration']).toBeUndefined()
+  })
+
+  it('他のキーは影響を受けない', () => {
+    useGameStore.setState({ mascotImages: { idle: 'data:image/png;base64,xyz' } })
+    s().setMascotImage('celebration', 'data:image/png;base64,abc')
+    expect(s().mascotImages['idle']).toBe('data:image/png;base64,xyz')
+  })
+})
+
+// ─────────────────────────────────────────────
+// 待機画面
+// ─────────────────────────────────────────────
+
+describe('setShowWaitingScreen', () => {
+  it('true に設定できる', () => {
+    s().setShowWaitingScreen(true)
+    expect(s().showWaitingScreen).toBe(true)
+  })
+
+  it('false に設定できる', () => {
+    useGameStore.setState({ showWaitingScreen: true })
+    s().setShowWaitingScreen(false)
+    expect(s().showWaitingScreen).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// Bug#1 投球数の投手ごと管理
+// ─────────────────────────────────────────────
+
+/** テスト用ヘルパー: 名前なし打順を生成 */
+const makeEmptyLineup = () =>
+  Array.from({ length: 10 }, (_, i) => ({
+    order: i + 1,
+    name: '',
+    number: '',
+    position: (i === 9 ? '投' : '') as '投' | '',
+  }))
+
+describe('Bug#1 投球数の投手ごと管理', () => {
+  it('B1-1: advanceInning で pitchCount が 0 にリセットされる', () => {
+    useGameStore.setState({ pitchCount: 87, currentHalf: 'top' })
+    s().advanceInning()
+    expect(s().pitchCount).toBe(0)
+  })
+
+  it('B1-1b: addStrike による3アウトでも pitchCount が新投手用にリセットされる', () => {
+    useGameStore.setState({
+      pitchCount: 49,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 2, outs: 2 },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      pitcherStats: {},
+    })
+    s().addStrike() // 3振目・3アウト → advanceInning
+    // 新投手は初登封0球のはず
+    expect(s().pitchCount).toBe(0)
+  })
+
+  it('B1-1c: addStrike3アウト時、最後の1球分が旧投手の pitcherStats に保存される', () => {
+    useGameStore.setState({
+      pitchCount: 49,
+      pitcher: { name: '森下', number: '18', stat: '', statLabel: '' },
+      currentHalf: 'top', // homeが投球中
+      count: { balls: 0, strikes: 2, outs: 2 },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      pitcherStats: {},
+    })
+    s().addStrike() // イニング進行
+    // home-18 に 50球（49球 + 最後の1球）が保存される
+    expect(s().pitcherStats['home-18']).toBe(50)
+  })
+
+  it('B1-2: advanceInning で前の投手の投球数が pitcherStats に保存される（表: home 投手）', () => {
+    // currentHalf='top' のとき home チームが守備（投球）中
+    useGameStore.setState({
+      pitchCount: 87,
+      pitcher: { name: '森下', number: '18', stat: '', statLabel: '' },
+      currentHalf: 'top',
+      pitcherStats: {},
+    })
+    s().advanceInning()
+    expect(s().pitcherStats['home-18']).toBe(87)
+  })
+
+  it('B1-3: setPitcher で pitchCount が 0 にリセットされる', () => {
+    useGameStore.setState({ pitchCount: 50, currentHalf: 'top' })
+    s().setPitcher({ name: '新投手', number: '20', stat: '', statLabel: '' })
+    expect(s().pitchCount).toBe(0)
+  })
+
+  it('B1-4: setPitcher で以前の投手の投球数が pitcherStats に保存される（裏: away 投手）', () => {
+    // currentHalf='bottom' のとき away チームが守備（投球）中
+    useGameStore.setState({
+      pitchCount: 50,
+      pitcher: { name: '旧投手', number: '14', stat: '', statLabel: '' },
+      currentHalf: 'bottom',
+      pitcherStats: {},
+    })
+    s().setPitcher({ name: '新投手', number: '20', stat: '', statLabel: '' })
+    expect(s().pitcherStats['away-14']).toBe(50)
+  })
+
+  it('B1-5: 同一投手が複数イニング登板した場合 pitcherStats に累積される', () => {
+    // currentHalf='bottom' → away が投球中、背番号 '18' の away 投手
+    useGameStore.setState({
+      pitcherStats: { 'away-18': 80 },
+      pitchCount: 30,
+      pitcher: { name: '先発', number: '18', stat: '', statLabel: '' },
+      currentHalf: 'bottom',
+    })
+    s().advanceInning()
+    expect(s().pitcherStats['away-18']).toBe(110)
+  })
+
+  it('B1-6: 中継ぎ交代後に投球数が 0 から積算される', () => {
+    useGameStore.setState({ pitchCount: 0 })
+    s().addPitch()
+    s().addPitch()
+    s().addPitch()
+    s().addPitch()
+    s().addPitch()
+    expect(s().pitchCount).toBe(5)
+  })
+
+  it('B1-7: setPitcher 後の pitcher 情報が正しくセットされる', () => {
+    const newPitcher = { name: '新投手', number: '20', stat: '3勝2敗', statLabel: '10登板' }
+    s().setPitcher(newPitcher)
+    expect(s().pitcher).toEqual(newPitcher)
+  })
+
+  it('B1-8: advanceInning 後、新しい投手の累積投球数が pitchCount に復元される', () => {
+    // inning 1 top: home が投球中 (away batting)
+    // 先に home-18 の保存済み投球数があるとする
+    useGameStore.setState({
+      currentHalf: 'top',
+      pitchCount: 30,
+      pitcher: { name: '旧投手', number: '99', stat: '', statLabel: '' },
+      pitcherStats: { 'away-18': 80 }, // 次回投球予定の投手がすでに80球分記録済み
+      awayLineup: [...CARP_LINEUP],   // away が守備側に回る (bottom に進む)
+      homeLineup: [...CARP_LINEUP],
+    })
+    // inning 1 top → bottom: home が攻撃、away が投球
+    // awayLineup[9] = 森下 #18 が新投手
+    s().advanceInning()
+    // 森下 #18 の保存済み80球が pitchCount に復元される
+    expect(s().pitchCount).toBe(80)
+  })
+
+  it('B1-9: setPitcher で同じ番号のとき pitchCount は変わらない（フォーム編集対策）', () => {
+    useGameStore.setState({
+      pitcher: { name: '森下 暢仁', number: '18', stat: '', statLabel: '' },
+      pitchCount: 55,
+    })
+    // 番号が同じ → 投手交代ではないのでリセットしない
+    s().setPitcher({ name: '森下 暢仁（更新）', number: '18', stat: '', statLabel: '' })
+    expect(s().pitchCount).toBe(55)
+  })
+
+  it('B1-10: setPitcher で番号が変わったとき新投手の累積投球数が復元される', () => {
+    useGameStore.setState({
+      pitcher: { name: '旧投手', number: '99', stat: '', statLabel: '' },
+      pitchCount: 40,
+      currentHalf: 'top',
+      pitcherStats: { 'home-20': 60 }, // 新投手の保存済み60球
+    })
+    s().setPitcher({ name: '新投手', number: '20', stat: '', statLabel: '' })
+    // 新投手の保存済み60球が復元される
+    expect(s().pitchCount).toBe(60)
+    // 旧投手の投球数が保存される: home-99 = 40
+    expect(s().pitcherStats['home-99']).toBe(40)
+  })
+
+  it('B1-11: addStrike→3アウト後、新投手の累積投球数が復元される', () => {
+    // inning 2 top: home が投球中（currentHalf='top'）
+    // away pitcher(森下 #18) はすでに inning 1 bottom で60球投げている
+    useGameStore.setState({
+      currentInning: 2,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 2, outs: 2 },
+      pitchCount: 49,
+      pitcher: { name: 'ホーム投手', number: '99', stat: '', statLabel: '' },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      pitcherStats: { 'away-18': 60 }, // awayLineup[9] = 森下 #18 の蓄積
+      innings: [
+        { inning: 1, top: 0, bottom: 0 },
+        { inning: 2, top: null, bottom: null },
+      ],
+    })
+    s().addStrike() // 3振目・3アウト → top→bottom
+    // away pitcher (森下 #18) の60球が復元される
+    expect(s().pitchCount).toBe(60)
+  })
+
+  it('B1-12: addOut→3アウト後、新投手の累積投球数が復元される', () => {
+    useGameStore.setState({
+      currentInning: 2,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      pitchCount: 49,
+      pitcher: { name: 'ホーム投手', number: '99', stat: '', statLabel: '' },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      pitcherStats: { 'away-18': 60 },
+      innings: [
+        { inning: 1, top: 0, bottom: 0 },
+        { inning: 2, top: null, bottom: null },
+      ],
+    })
+    s().addOut() // 3アウト → top→bottom
+    // away pitcher (森下 #18) の60球が復元される
+    expect(s().pitchCount).toBe(60)
+  })
+
+  it('B1-13: 多イニング統合テスト（同一投手が複数イニング登板）', () => {
+    // 初期状態: inning 1 top, home が投球
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 0 },
+      pitchCount: 0,
+      pitcher: CARP_LINEUP[9]
+        ? {
+            name: CARP_LINEUP[9].name,
+            number: CARP_LINEUP[9].number,
+            stat: '',
+            statLabel: '',
+          }
+        : { name: '', number: '18', stat: '', statLabel: '' },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      innings: [{ inning: 1, top: null, bottom: null }],
+      pitcherStats: {},
+    })
+
+    // inning 1 top: home pitcher(#18) が50球投げる
+    useGameStore.setState({ pitchCount: 50 })
+    s().advanceInning() // top → bottom
+
+    // bottom では away pitcher(#18) が初登板 → 0球
+    expect(s().pitchCount).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+
+    // inning 1 bottom: away pitcher(#18) が30球投げる
+    useGameStore.setState({ pitchCount: 30 })
+    s().advanceInning() // bottom → inning 2 top
+
+    // inning 2 top: home pitcher(#18) が戻ってくる → 50球が復元されるべき
+    expect(s().currentHalf).toBe('top')
+    expect(s().pitchCount).toBe(50)
+
+    // inning 2 top でさらに20球
+    useGameStore.setState({ pitchCount: 70 }) // 50 + 20
+    s().advanceInning() // top → bottom
+
+    // inning 2 bottom: away pitcher(#18) が戻ってくる → 30球が復元されるべき
+    expect(s().pitchCount).toBe(30)
+  })
+})
+
+// ─────────────────────────────────────────────
+// Bug#2 無得点イニングのスコア null → 0 変換
+// ─────────────────────────────────────────────
+
+describe('Bug#2 無得点イニングのスコア null → 0 変換', () => {
+  it('B2-1: 表→裏: top=null が 0 になる', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: null, bottom: null }],
+    })
+    s().advanceInning()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(0)
+  })
+
+  it('B2-2: 表→裏: top=2（得点あり）はそのまま', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 2, bottom: null }],
+    })
+    s().advanceInning()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(2)
+  })
+
+  it('B2-3: 裏→次の表: bottom=null が 0 になる', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'bottom',
+      innings: [{ inning: 1, top: 1, bottom: null }],
+    })
+    s().advanceInning()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.bottom).toBe(0)
+  })
+
+  it('B2-4: 裏→次の表: bottom=3（得点あり）はそのまま', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'bottom',
+      innings: [{ inning: 1, top: 0, bottom: 3 }],
+    })
+    s().advanceInning()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.bottom).toBe(3)
+  })
+
+  it('B2-5: 3アウトによる自動 advanceInning でも無得点 top が 0 になる', () => {
+    useGameStore.setState({
+      currentInning: 2,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings: [
+        { inning: 1, top: 0, bottom: 0 },
+        { inning: 2, top: null, bottom: null },
+      ],
+    })
+    s().addOut() // 3アウト目
+    const inn2 = s().innings.find((i) => i.inning === 2)
+    expect(inn2?.top).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────
+// Bug#3 攻守交代時の打者・投手自動セット
+// ─────────────────────────────────────────────
+
+describe('Bug#3 攻守交代時の打者・投手自動セット', () => {
+  it('B3-1: 表→裏: homeLineup の現在打者が batter にセットされる', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      homeLineup: [...CARP_LINEUP],
+      homeBatterIndex: 2,
+    })
+    s().advanceInning()
+    expect(s().batter.name).toBe(CARP_LINEUP[2]!.name)
+    expect(s().batter.number).toBe(CARP_LINEUP[2]!.number)
+  })
+
+  it('B3-2: 表→裏: awayLineup の投手（index 9）が pitcher にセットされる', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      awayLineup: [...CARP_LINEUP],
+    })
+    s().advanceInning()
+    expect(s().pitcher.name).toBe(CARP_LINEUP[9]!.name)
+    expect(s().pitcher.number).toBe(CARP_LINEUP[9]!.number)
+  })
+
+  it('B3-3: 裏→次の表: awayLineup の現在打者が batter にセットされる', () => {
+    useGameStore.setState({
+      currentHalf: 'bottom',
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 4,
+    })
+    s().advanceInning()
+    expect(s().batter.name).toBe(CARP_LINEUP[4]!.name)
+  })
+
+  it('B3-4: 裏→次の表: homeLineup の投手（index 9）が pitcher にセットされる', () => {
+    useGameStore.setState({
+      currentHalf: 'bottom',
+      homeLineup: [...CARP_LINEUP],
+    })
+    s().advanceInning()
+    expect(s().pitcher.name).toBe(CARP_LINEUP[9]!.name)
+  })
+
+  it('B3-5: 打順が空の場合 batter は空のまま（クラッシュしない）', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      homeLineup: makeEmptyLineup() as any,
+      homeBatterIndex: 0,
+    })
+    expect(() => s().advanceInning()).not.toThrow()
+    expect(s().batter.name).toBe('')
+  })
+
+  it('B3-6: 3アウトによる自動 advanceInning でも打者が自動セットされる', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings: [{ inning: 1, top: null, bottom: null }],
+      homeLineup: [...CARP_LINEUP],
+      homeBatterIndex: 1,
+    })
+    s().addOut() // 3アウト → advanceInning
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+})
+
+// ─────────────────────────────────────────────
+// Bug#4 攻守交代時の lineupDisplayTeam 自動更新
+// ─────────────────────────────────────────────
+
+describe('Bug#4 攻守交代時の lineupDisplayTeam 自動更新', () => {
+  it('B4-1: 表→裏: lineupDisplayTeam が "home" になる', () => {
+    useGameStore.setState({ currentHalf: 'top', lineupDisplayTeam: 'away' })
+    s().advanceInning()
+    expect(s().lineupDisplayTeam).toBe('home')
+  })
+
+  it('B4-2: 裏→次の表: lineupDisplayTeam が "away" になる', () => {
+    useGameStore.setState({ currentHalf: 'bottom', lineupDisplayTeam: 'home' })
+    s().advanceInning()
+    expect(s().lineupDisplayTeam).toBe('away')
+  })
+
+  it('B4-3: 3アウトによる自動 advanceInning でも lineupDisplayTeam が更新される', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings: [{ inning: 1, top: null, bottom: null }],
+      lineupDisplayTeam: 'away',
+    })
+    s().addOut() // 3アウト → advanceInning
+    expect(s().lineupDisplayTeam).toBe('home')
+  })
+})
+
+// ─────────────────────────────────────────────
+// オーバーレイ位置
+// ─────────────────────────────────────────────
+
+describe('setOverlayPosition', () => {
+  it('指定 id の位置を更新できる', () => {
+    s().setOverlayPosition('scoreboard', { x: 100, y: 200 })
+    expect(s().overlayPositions['scoreboard']).toEqual({ x: 100, y: 200 })
+  })
+
+  it('他の要素の位置は変わらない', () => {
+    const timerBefore = s().overlayPositions['timer']
+    s().setOverlayPosition('scoreboard', { x: 50, y: 50 })
+    expect(s().overlayPositions['timer']).toEqual(timerBefore)
+  })
+})
+
+describe('resetOverlayPositions', () => {
+  it('全ての位置がデフォルト値に戻る', () => {
+    s().setOverlayPosition('scoreboard', { x: 999, y: 999 })
+    s().resetOverlayPositions()
+    expect(s().overlayPositions['scoreboard']).toEqual({ x: 24, y: 24 })
   })
 })
