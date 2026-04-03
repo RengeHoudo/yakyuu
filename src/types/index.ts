@@ -240,7 +240,7 @@ export const initialGameState: GameState = {
   showMascot: false,
   mascotMode: 'idle',
   mascotImages: {},
-  autoChangeEffect: true,
+  autoChangeEffect: false,
   showWaitingScreen: false,
   overlayPositions: { ...DEFAULT_OVERLAY_POSITIONS },
   overlayScale: 1,

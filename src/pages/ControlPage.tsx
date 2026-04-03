@@ -53,12 +53,12 @@ export default function ControlPage() {
   usePeriodicBroadcast()
 
   const allSections: Section[] = [
-    { id: 'game', label: '試合管理', component: <GameControl /> },
     { id: 'inning', label: 'イニング', component: <InningControl /> },
     { id: 'count', label: 'カウント', component: <CountControl /> },
     { id: 'runner', label: '走者', component: <RunnerControl /> },
-    { id: 'player', label: '選手情報', component: <PlayerControl /> },
     { id: 'score', label: '得点・安打・失策', component: <ScoreControl /> },
+    { id: 'player', label: '選手情報', component: <PlayerControl /> },
+    { id: 'game', label: '試合管理', component: <GameControl /> },
     { id: 'lineup', label: '打順・選手', component: <LineupControl /> },
     { id: 'effect', label: 'エフェクト', component: <EffectControl /> },
     { id: 'mascot', label: 'マスコット', component: <MascotControl /> },
