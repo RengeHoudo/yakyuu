@@ -129,6 +129,24 @@ describe('parseRosterCsv 名前正規化', () => {
     const result = parseRosterCsv(csv)
     expect(result[0]!.name).toBe('小園 海斗')
   })
+
+  it('先頭の半角 * を除去する（左打・左右打のマーク）', () => {
+    const csv = `外野手,55,*秋山 翔吾`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('秋山 翔吾')
+  })
+
+  it('全角 ＊ も除去する', () => {
+    const csv = `内野手,3,＊小園 海斗`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('小園 海斗')
+  })
+
+  it('* + アルファベットピリオドの両方がある場合も正しく除去する', () => {
+    const csv = `内野手,44,*B.コルデロ`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('コルデロ')
+  })
 })
 
 // ─────────────────────────────────────────────

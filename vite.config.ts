@@ -12,6 +12,21 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: () => '/announcement/roster/',
       },
+      '/api/npb-stats/': {
+        target: 'https://npb.jp',
+        changeOrigin: true,
+        rewrite: (path) => {
+          // /api/npb-stats/batting/2026/c → /bis/2026/stats/idb1_c.html
+          // /api/npb-stats/pitching/2026/c → /bis/2026/stats/idp1_c.html
+          const m = path.match(/\/api\/npb-stats\/(batting|pitching)\/(\d+)\/(\w+)/)
+          if (!m) return path
+          const type = m[1]
+          const year = m[2]
+          const code = m[3]
+          const prefix = type === 'batting' ? 'idb1' : 'idp1'
+          return `/bis/${year}/stats/${prefix}_${code}.html`
+        },
+      },
     },
   },
   resolve: {

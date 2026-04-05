@@ -10,10 +10,34 @@ export interface RosterPlayer {
   number: string
   name: string
   positionCategory: PositionCategory
-  battingAvg?: string
-  homeRuns?: string
-  rbi?: string
-  ops?: string
+  // 基本表示用
+  battingAvg?: string   // 打率
+  homeRuns?: string     // 本塁打
+  rbi?: string          // 打点
+  ops?: string          // OPS
+  // 詳細打撃成績
+  games?: string            // 試合
+  plateAppearances?: string // 打席
+  atBats?: string           // 打数
+  runs?: string             // 得点
+  hits?: string             // 安打
+  doubles?: string          // 二塁打
+  triples?: string          // 三塁打
+  totalBases?: string       // 塁打
+  stolenBases?: string      // 盗塁
+  caughtStealing?: string   // 盗塁刺
+  sacrificeHits?: string    // 犠打
+  sacrificeFlies?: string   // 犠飛
+  walks?: string            // 四球
+  intentionalWalks?: string // 故意四球
+  hitByPitch?: string       // 死球
+  strikeouts?: string       // 三振
+  groundedIntoDoublePlays?: string // 併殺打
+  sluggingPct?: string      // 長打率
+  onBasePct?: string        // 出塁率
+  // 投手用
+  appearances?: string  // 投手: 登板数
+  record?: string       // 投手: 勝敗（例: "5勝3敗"）
 }
 
 export interface Count {
@@ -47,11 +71,31 @@ export interface LineupPlayer {
   name: string
   number: string
   position: Position
-  // 打者用（1-9番）
+  // 打者用（1-9番）基本表示用
   battingAvg?: string   // 打率
   homeRuns?: string     // 本塁打数
   rbi?: string          // 打点
   ops?: string          // OPS
+  // 打者用 詳細成績
+  games?: string
+  plateAppearances?: string
+  atBats?: string
+  runs?: string
+  hits?: string
+  doubles?: string
+  triples?: string
+  totalBases?: string
+  stolenBases?: string
+  caughtStealing?: string
+  sacrificeHits?: string
+  sacrificeFlies?: string
+  walks?: string
+  intentionalWalks?: string
+  hitByPitch?: string
+  strikeouts?: string
+  groundedIntoDoublePlays?: string
+  sluggingPct?: string
+  onBasePct?: string
   // 投手用（10番目）
   appearances?: string  // 登板数
   record?: string       // 勝敗（例: "5勝3敗"）

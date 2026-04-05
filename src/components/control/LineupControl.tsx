@@ -72,10 +72,30 @@ function BatterRow({
                 ...player,
                 name: r.name,
                 number: r.number,
-                battingAvg: r.battingAvg ?? '',
-                homeRuns: r.homeRuns ?? '',
-                rbi: r.rbi ?? '',
-                ops: r.ops ?? '',
+                // ロスターに stats がある場合はそれを使用、なければ既存値を保持
+                battingAvg: r.battingAvg ?? player.battingAvg ?? '',
+                homeRuns: r.homeRuns ?? player.homeRuns ?? '',
+                rbi: r.rbi ?? player.rbi ?? '',
+                ops: r.ops ?? player.ops ?? '',
+                games: r.games,
+                plateAppearances: r.plateAppearances,
+                atBats: r.atBats,
+                runs: r.runs,
+                hits: r.hits,
+                doubles: r.doubles,
+                triples: r.triples,
+                totalBases: r.totalBases,
+                stolenBases: r.stolenBases,
+                caughtStealing: r.caughtStealing,
+                sacrificeHits: r.sacrificeHits,
+                sacrificeFlies: r.sacrificeFlies,
+                walks: r.walks,
+                intentionalWalks: r.intentionalWalks,
+                hitByPitch: r.hitByPitch,
+                strikeouts: r.strikeouts,
+                groundedIntoDoublePlays: r.groundedIntoDoublePlays,
+                sluggingPct: r.sluggingPct,
+                onBasePct: r.onBasePct,
               })
             }}
           >
@@ -195,7 +215,7 @@ function PitcherRow({
           value=""
           onChange={(e) => {
             const r = pitchers.find((r) => `${r.number}__${r.name}` === e.target.value)
-            if (r) onChange({ ...player, name: r.name, number: r.number, appearances: '', record: '' })
+            if (r) onChange({ ...player, name: r.name, number: r.number, appearances: r.appearances ?? '', record: r.record ?? '' })
           }}
         >
           <option value="">{player.name || '-- 投手を選択 --'}</option>
