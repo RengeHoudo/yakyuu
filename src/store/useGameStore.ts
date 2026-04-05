@@ -60,6 +60,7 @@ interface GameActions {
   addHit: (team: 'away' | 'home') => void
   recordHit: () => void
   recordHitByPitch: () => void
+  recordHomeRun: () => void
   recordGroundout: () => void
   recordDoublePlay: () => void
   recordTriplePlay: () => void
@@ -271,6 +272,41 @@ export const useGameStore = create<GameStore>()(
           ...advanceBatterPatch(s),
           pitchCount: s.pitchCount + 1,
         })),
+
+      recordHomeRun: () =>
+        set((s) => {
+          const runnerCount =
+            (s.runners.first ? 1 : 0) +
+            (s.runners.second ? 1 : 0) +
+            (s.runners.third ? 1 : 0)
+          const totalRuns = runnerCount + 1  // 走者 + 打者本人
+
+          const innings = [...s.innings]
+          const idx = innings.findIndex((inn) => inn.inning === s.currentInning)
+          if (idx !== -1) {
+            const inn = { ...innings[idx]! }
+            const half = s.currentHalf
+            inn[half] = (inn[half] ?? 0) + totalRuns
+            innings[idx] = inn
+          }
+          const totals = recalcTotals({ ...extractGameState(s), innings })
+
+          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
+          const hitsPatch = attackTeam === 'away'
+            ? { awayHits: s.awayHits + 1 }
+            : { homeHits: s.homeHits + 1 }
+
+          return {
+            ...hitsPatch,
+            innings: totals.innings,
+            awayTotal: totals.awayTotal,
+            homeTotal: totals.homeTotal,
+            runners: { first: false, second: false, third: false },
+            runnerIndices: { first: null, second: null, third: null },
+            pitchCount: s.pitchCount + 1,
+            ...advanceBatterPatch(s),
+          }
+        }),
 
       recordGroundout: () => set((s) => applyOutPlay(s, 1)),
       recordDoublePlay: () => set((s) => applyOutPlay(s, 2)),

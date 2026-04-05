@@ -13,6 +13,7 @@ export default function CountControl() {
   const setPitchCount = useGameStore((s) => s.setPitchCount)
   const recordHit = useGameStore((s) => s.recordHit)
   const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
+  const recordHomeRun = useGameStore((s) => s.recordHomeRun)
   const recordGroundout = useGameStore((s) => s.recordGroundout)
   const recordDoublePlay = useGameStore((s) => s.recordDoublePlay)
   const recordTriplePlay = useGameStore((s) => s.recordTriplePlay)
@@ -147,6 +148,12 @@ export default function CountControl() {
             className="flex-1 bg-orange-700 hover:bg-orange-600 text-white px-3 py-2 rounded text-sm font-bold"
           >
             死球
+          </button>
+          <button
+            onClick={recordHomeRun}
+            className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white px-3 py-2 rounded text-sm font-bold"
+          >
+            HR
           </button>
         </div>
       </div>

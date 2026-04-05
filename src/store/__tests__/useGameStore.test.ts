@@ -2104,3 +2104,122 @@ describe('rewindInning で runnerIndices がリセットされる', () => {
     expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
   })
 })
+
+// ─────────────────────────────────────────────
+// recordHomeRun ホームラン
+// ─────────────────────────────────────────────
+
+describe('recordHomeRun ホームラン', () => {
+  it('ソロHR: 1点加算・走者なし・投球数+1・打者交代・B/Sリセット', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      pitchCount: 5,
+      count: { balls: 2, strikes: 1, outs: 1 },
+      awayHits: 0,
+      awayTotal: 0,
+    })
+    s().recordHomeRun()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(1)
+    expect(s().awayTotal).toBe(1)
+    expect(s().runners).toEqual({ first: false, second: false, third: false })
+    expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
+    expect(s().pitchCount).toBe(6)
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+    expect(s().count.outs).toBe(1)  // アウト数は変わらない
+  })
+
+  it('満塁HR: 4点加算・走者全クリア', () => {
+    useGameStore.setState({
+      currentInning: 2,
+      currentHalf: 'top',
+      innings: [
+        { inning: 1, top: 0, bottom: 0 },
+        { inning: 2, top: 0, bottom: null },
+      ],
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 1, second: 2, third: 3 },
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      pitchCount: 0,
+      awayTotal: 0,
+    })
+    s().recordHomeRun()
+    const inn2 = s().innings.find((i) => i.inning === 2)
+    expect(inn2?.top).toBe(4)
+    expect(s().awayTotal).toBe(4)
+    expect(s().runners).toEqual({ first: false, second: false, third: false })
+    expect(s().runnerIndices).toEqual({ first: null, second: null, third: null })
+  })
+
+  it('1塁走者ありHR: 2点加算', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'bottom',
+      innings: [{ inning: 1, top: 0, bottom: 0 }],
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 1, second: null, third: null },
+      homeLineup: [...CARP_LINEUP],
+      homeBatterIndex: 3,
+      pitchCount: 10,
+      homeTotal: 0,
+    })
+    s().recordHomeRun()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.bottom).toBe(2)
+    expect(s().homeTotal).toBe(2)
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('2・3塁走者ありHR: 3点加算', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: true, third: true },
+      runnerIndices: { first: null, second: 2, third: 5 },
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 7,
+      pitchCount: 0,
+      awayTotal: 0,
+    })
+    s().recordHomeRun()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(3)
+    expect(s().awayTotal).toBe(3)
+  })
+
+  it('安打数が1増える（表の場合はaway）', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      awayHits: 3,
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      awayLineup: [...CARP_LINEUP],
+    })
+    s().recordHomeRun()
+    expect(s().awayHits).toBe(4)
+  })
+
+  it('安打数が1増える（裏の場合はhome）', () => {
+    useGameStore.setState({
+      currentHalf: 'bottom',
+      homeHits: 1,
+      innings: [{ inning: 1, top: 0, bottom: 0 }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      homeLineup: [...CARP_LINEUP],
+    })
+    s().recordHomeRun()
+    expect(s().homeHits).toBe(2)
+  })
+})
