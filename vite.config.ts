@@ -12,6 +12,14 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: () => '/announcement/roster/',
       },
+      '/api/npb-scores/': {
+        target: 'https://npb.jp',
+        changeOrigin: true,
+        rewrite: (path) => {
+          // /api/npb-scores/2026/0405/c-t-03/ → /scores/2026/0405/c-t-03/
+          return path.replace('/api/npb-scores/', '/scores/')
+        },
+      },
       '/api/npb-stats/': {
         target: 'https://npb.jp',
         changeOrigin: true,

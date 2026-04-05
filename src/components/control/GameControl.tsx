@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
-import { fetchNpbRoster, NPB_TEAM_MAP } from '../../lib/npbRoster'
+import { fetchNpbRoster, NPB_TEAM_MAP, SCORE_URL_PATTERN, parseScoreUrl, NPB_CODE_TO_TEAM_MAP } from '../../lib/npbRoster'
 import { useRosterStore } from '../../store/useRosterStore'
 
 const NPB_PRESETS = [
@@ -36,12 +36,16 @@ export default function GameControl() {
   const resetOverlayPositions = useGameStore((s) => s.resetOverlayPositions)
   const overlayScale = useGameStore((s) => s.overlayScale ?? 1)
   const setOverlayScale = useGameStore((s) => s.setOverlayScale)
+  const scoreUrl = useGameStore((s) => s.scoreUrl)
+  const setScoreUrl = useGameStore((s) => s.setScoreUrl)
 
   // ローカル state（スムーズな入力用）
   const [awayName, setAwayName] = useState(awayTeam.name)
   const [homeName, setHomeName] = useState(homeTeam.name)
   const [awayColor, setAwayColor] = useState(awayTeam.color)
   const [homeColor, setHomeColor] = useState(homeTeam.color)
+  const [scoreUrlInput, setScoreUrlInput] = useState(scoreUrl ?? '')
+  const [scoreUrlError, setScoreUrlError] = useState<string | null>(null)
   const [loadingTeam, setLoadingTeam] = useState<'away' | 'home' | null>(null)
   const [rosterError, setRosterError] = useState<string | null>(null)
   const [autoFetchRoster, setAutoFetchRoster] = useState(true)
@@ -52,6 +56,7 @@ export default function GameControl() {
   useEffect(() => { setHomeName(homeTeam.name) }, [homeTeam.name])
   useEffect(() => { setAwayColor(awayTeam.color) }, [awayTeam.color])
   useEffect(() => { setHomeColor(homeTeam.color) }, [homeTeam.color])
+  useEffect(() => { setScoreUrlInput(scoreUrl ?? '') }, [scoreUrl])
 
   /** ローカル state → ストアに反映（name を shortName にも使用） */
   const applyTeams = () => {
@@ -101,9 +106,64 @@ export default function GameControl() {
     }
   }
 
+  /** スコアページURL を適用し、チームプリセットも自動設定する */
+  const handleScoreUrlApply = () => {
+    setScoreUrlError(null)
+    const trimmed = scoreUrlInput.trim()
+    if (!trimmed) {
+      setScoreUrl('')
+      return
+    }
+    if (!SCORE_URL_PATTERN.test(trimmed)) {
+      setScoreUrlError('URLの形式が正しくありません。例: https://npb.jp/scores/2026/0405/c-t-03/')
+      return
+    }
+    setScoreUrl(trimmed)
+    // URL からチームを自動設定
+    const parsed = parseScoreUrl(trimmed)
+    if (parsed) {
+      const homeName = NPB_CODE_TO_TEAM_MAP[parsed.homeCode]
+      const awayName = NPB_CODE_TO_TEAM_MAP[parsed.awayCode]
+      if (awayName) {
+        const preset = NPB_PRESETS.find((p) => p.name === awayName)
+        if (preset) void handlePreset('away', preset)
+      }
+      if (homeName) {
+        const preset = NPB_PRESETS.find((p) => p.name === homeName)
+        if (preset) void handlePreset('home', preset)
+      }
+    }
+  }
+
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-4">
       <h2 className="text-white font-bold text-lg">試合管理</h2>
+
+      {/* NPBスコアページURL */}
+      <div className="space-y-1">
+        <label className="text-gray-400 text-xs">NPBスコアページURL</label>
+        <div className="flex gap-2">
+          <input
+            className="flex-1 bg-gray-700 text-white rounded px-3 py-2 text-sm font-mono placeholder:text-gray-500"
+            placeholder="https://npb.jp/scores/2026/0405/c-t-03/"
+            value={scoreUrlInput}
+            onChange={(e) => setScoreUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleScoreUrlApply() }}
+          />
+          <button
+            onClick={handleScoreUrlApply}
+            className="bg-accent hover:bg-accent/80 text-white px-4 py-2 rounded text-sm font-bold whitespace-nowrap"
+          >
+            適用
+          </button>
+        </div>
+        {scoreUrlError && (
+          <div className="text-red-400 text-xs">{scoreUrlError}</div>
+        )}
+        {scoreUrl && !scoreUrlError && (
+          <div className="text-green-400 text-xs">✓ URL設定済み — 打順・選手欄の「打順取得」で反映できます</div>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">

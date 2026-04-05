@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CARP_LINEUP, initialGameState, initialPlayerInfo } from '../../types'
+import { CARP_LINEUP, initialGameState } from '../../types'
 import { useGameStore } from '../useGameStore'
 
 vi.mock('../../lib/sync', () => ({ broadcastState: vi.fn() }))
@@ -3144,7 +3144,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
     })
 
     // 投手交代: #18 → #22
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     // 救援投手 #22 が二塁打を打たれる（3塁走者と2塁走者が生還、1塁走者は3塁へ）
     s().recordDouble()
@@ -3176,7 +3176,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       lastBatterIndex: 0,
     })
     // 投手交代
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     s().scoreRunnerWithRBI(3)
 
@@ -3193,7 +3193,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       runnerIndices: { first: null, second: null, third: 3 },
       runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
     })
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     s().scoreRunnerUnearned(3)
 
@@ -3204,7 +3204,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
 
   it('救援投手自身が出した走者の得点は救援投手に記録', () => {
     // 投手交代済みの状態
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     // 救援投手 #22 がシングル→走者1塁
     s().recordSingle()
@@ -3226,7 +3226,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       runnerResponsiblePitcher: { first: 'home-18', second: 'home-18', third: 'home-18' },
     })
     // 投手交代
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     // 四球 → 3塁走者(#18責任)が押し出しで生還
     s().recordWalk()
@@ -3243,7 +3243,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       runnerIndices: { first: null, second: null, third: 3 },
       runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
     })
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     s().advanceRunnersOnWildPitch()
 
@@ -3275,7 +3275,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
   })
 
   it('setRunnerAtBase で responsiblePitcher が現在の投手に設定される', () => {
-    s().setRunnerAtBase('second', true, 5)
+    s().setRunnerAtBase('second', 5)
     expect(s().runnerResponsiblePitcher.second).toBe('home-18')
   })
 
@@ -3296,7 +3296,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
       lastBatterIndex: 0,
     })
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     s().recordSacrificeFly()
 
@@ -3314,7 +3314,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
       runnerResponsiblePitcher: { first: 'home-18', second: null, third: null },
     })
     // 投手交代
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     // 手動で1塁→2塁に移動 (フィルダーズチョイス等)
     s().setRunnerAtBase('second', 3)
@@ -3341,7 +3341,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
     })
 
     // 投手交代: #18 → #22
-    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+    s().setPitcher({ name: '救援', number: '22', stat: '', statLabel: '' })
 
     // === フィルダーズチョイス操作 ===
     // 1) 2塁走者(idx2)が3塁でフォースアウト → 除去

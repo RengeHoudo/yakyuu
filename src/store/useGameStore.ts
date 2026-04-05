@@ -28,7 +28,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
-  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings',
+  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -353,6 +353,8 @@ interface GameActions {
   advanceRunnersOnWildPitch: () => void
   /** オーバーレイ表示スタッツ設定を部分更新する */
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
+  /** NPBスコアページURLをセットする */
+  setScoreUrl: (url: string) => void
 }
 
 type GameStore = GameState & GameActions
@@ -538,6 +540,8 @@ export const useGameStore = create<GameStore>()(
         set((s) => ({
           statDisplaySettings: { ...s.statDisplaySettings, ...settings },
         })),
+
+      setScoreUrl: (url) => set({ scoreUrl: url }),
 
       addRun: (team) =>
         set((s) => {

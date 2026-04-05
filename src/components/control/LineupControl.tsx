@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
 import type { LineupPlayer, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
+import { fetchScorePageLineup, matchAbbreviatedName } from '../../lib/npbRoster'
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
 
@@ -371,10 +372,142 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const scoreRunnerWithRBI = useGameStore((s) => s.scoreRunnerWithRBI)
   const scoreRunnerNoRBI = useGameStore((s) => s.scoreRunnerNoRBI)
   const scoreRunnerUnearned = useGameStore((s) => s.scoreRunnerUnearned)
+  const scoreUrl = useGameStore((s) => s.scoreUrl)
+
+  const [fetchingLineup, setFetchingLineup] = useState(false)
 
   const isAttacking = (side === 'away' && currentHalf === 'top') ||
     (side === 'home' && currentHalf === 'bottom')
   const label = side === 'away' ? '先攻' : '後攻'
+
+  /** NPBスコアページから打順を取得して適用する */
+  const handleFetchLineup = async () => {
+    if (!scoreUrl) return
+    setFetchingLineup(true)
+    setCsvError(null)
+    try {
+      const [awayOrder, homeOrder] = await fetchScorePageLineup(scoreUrl)
+      const entries = side === 'away' ? awayOrder : homeOrder
+      if (entries.length === 0) {
+        setCsvError('スコアページからオーダーを取得できませんでした')
+        return
+      }
+
+      const currentLineup = [...lineup]
+      for (const entry of entries) {
+        const idx = entry.order - 1
+        if (idx < 0 || idx > 8) continue
+
+        // ロスターとのマッチング
+        const matched = roster.length > 0 ? matchAbbreviatedName(entry.name, roster) : null
+        const existing = currentLineup[idx]!
+        // 同じ選手が既にセットされている場合、成績は保持する
+        const isSamePlayer = matched
+          ? (existing.name === matched.name && existing.number === matched.number)
+          : false
+
+        if (matched) {
+          // ロスターからフル情報を取得
+          const isPitcher = matched.positionCategory === '投手'
+          currentLineup[idx] = {
+            ...existing,
+            order: entry.order,
+            position: entry.position,
+            name: matched.name,
+            number: matched.number,
+            // 同じ選手なら試合中の成績を保持、新しい選手ならロスターから引き継ぐ
+            ...(isPitcher || isSamePlayer ? {} : {
+              battingAvg: matched.battingAvg ?? '',
+              homeRuns: matched.homeRuns ?? '',
+              rbi: matched.rbi ?? '',
+              ops: matched.ops ?? '',
+              games: matched.games,
+              plateAppearances: matched.plateAppearances,
+              atBats: matched.atBats,
+              runs: matched.runs,
+              hits: matched.hits,
+              doubles: matched.doubles,
+              triples: matched.triples,
+              totalBases: matched.totalBases,
+              stolenBases: matched.stolenBases,
+              caughtStealing: matched.caughtStealing,
+              sacrificeHits: matched.sacrificeHits,
+              sacrificeFlies: matched.sacrificeFlies,
+              walks: matched.walks,
+              intentionalWalks: matched.intentionalWalks,
+              hitByPitch: matched.hitByPitch,
+              strikeouts: matched.strikeouts,
+              groundedIntoDoublePlays: matched.groundedIntoDoublePlays,
+              sluggingPct: matched.sluggingPct,
+              onBasePct: matched.onBasePct,
+            }),
+          }
+
+          // 投手が1-9番に入っている場合、10番にも投手としてセット
+          if (isPitcher && entry.position === '投') {
+            const existingPitcher = currentLineup[9]!
+            const isSamePitcher = existingPitcher.name === matched.name && existingPitcher.number === matched.number
+            currentLineup[9] = {
+              ...existingPitcher,
+              name: matched.name,
+              number: matched.number,
+              position: '投',
+              // 同じ投手なら試合中の成績を保持
+              ...(isSamePitcher ? {} : {
+                appearances: matched.appearances ?? '',
+                record: matched.record ?? '',
+                wins: matched.wins,
+                losses: matched.losses,
+                saves: matched.saves,
+                holds: matched.holds,
+                holdPoints: matched.holdPoints,
+                completeGames: matched.completeGames,
+                shutouts: matched.shutouts,
+                noWalkGames: matched.noWalkGames,
+                winPct: matched.winPct,
+                battersFaced: matched.battersFaced,
+                inningsPitched: matched.inningsPitched,
+                hitsAllowed: matched.hitsAllowed,
+                homeRunsAllowed: matched.homeRunsAllowed,
+                walksAllowed: matched.walksAllowed,
+                intentionalWalksAllowed: matched.intentionalWalksAllowed,
+                hitByPitchAllowed: matched.hitByPitchAllowed,
+                strikeoutsThrown: matched.strikeoutsThrown,
+                wildPitches: matched.wildPitches,
+                balks: matched.balks,
+                runsAllowed: matched.runsAllowed,
+                earnedRuns: matched.earnedRuns,
+                era: matched.era,
+                whip: matched.whip,
+              }),
+            }
+          }
+        } else {
+          // ロスターなし：スコアページの名前だけセット
+          currentLineup[idx] = {
+            ...currentLineup[idx]!,
+            order: entry.order,
+            position: entry.position,
+            name: entry.name,
+          }
+
+          if (entry.position === '投') {
+            currentLineup[9] = {
+              ...currentLineup[9]!,
+              name: entry.name,
+              position: '投',
+            }
+          }
+        }
+      }
+
+      setLineup(side, currentLineup)
+    } catch (err) {
+      setCsvError(err instanceof Error ? err.message : '打順の取得に失敗しました')
+    } finally {
+      setFetchingLineup(false)
+    }
+  }
 
   const handleCsvImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCsvError(null)
@@ -492,6 +625,18 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
           {roster.length > 0 && (
             <span className="ml-1 text-purple-200">({roster.length}名)</span>
           )}
+        </button>
+        <button
+          onClick={handleFetchLineup}
+          disabled={!scoreUrl || fetchingLineup}
+          className={`px-2 py-1 rounded text-xs font-bold ${
+            scoreUrl && !fetchingLineup
+              ? 'bg-green-600 hover:bg-green-500 text-white'
+              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}
+          title={scoreUrl ? 'NPBスコアページから打順を取得' : 'まず試合管理でURLを設定してください'}
+        >
+          {fetchingLineup ? '取得中...' : '打順取得'}
         </button>
         {roster.length > 0 && (
           <button

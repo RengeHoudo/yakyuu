@@ -80,7 +80,7 @@ describe('parseNpbRosterHtml', () => {
     ])
     const result = parseNpbRosterHtml(html, '広島')
     expect(result).toHaveLength(1)
-    expect(result[0].positionCategory).toBe('投手')
+    expect(result[0]!.positionCategory).toBe('投手')
   })
 
   it('名前が空のrowはスキップされる', () => {
@@ -90,7 +90,7 @@ describe('parseNpbRosterHtml', () => {
     ])
     const result = parseNpbRosterHtml(html, '広島')
     expect(result).toHaveLength(1)
-    expect(result[0].positionCategory).toBe('捕手')
+    expect(result[0]!.positionCategory).toBe('捕手')
   })
 
   it('3列未満のrowはスキップされる（ヘッダー行等）', () => {
@@ -112,7 +112,7 @@ describe('parseNpbRosterHtml', () => {
   it('全角スペースの名前は半角スペースに正規化される', () => {
     const html = makeHtml('広島東洋カープ', [['投手', '14', '大瀬良　大地']])
     const result = parseNbRosterHtml(html, '広島')
-    expect(result[0].name).toBe('大瀬良 大地')
+    expect(result[0]!.name).toBe('大瀬良 大地')
   })
 })
 
@@ -155,7 +155,7 @@ describe('fetchNpbRoster', () => {
 
     const result = await fetchNpbRoster('広島')
     expect(result).toHaveLength(2)
-    expect(result[0].name).toBe('大瀬良 大地')
+    expect(result[0]!.name).toBe('大瀬良 大地')
   })
 
   it('HTTP エラー時に throw する', async () => {

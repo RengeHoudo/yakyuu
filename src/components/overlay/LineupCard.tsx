@@ -1,6 +1,6 @@
 import { useGameStore } from '../../store/useGameStore'
-import type { PlayerInfo } from '../../types'
-import { formatBatterStat } from '../../types'
+import type { PlayerInfo, PitcherGameStats, StatDisplaySettings, LineupPlayer } from '../../types'
+import { formatBatterStat, formatPitcherStat } from '../../types'
 
 export default function LineupCard() {
   const awayTeam = useGameStore((s) => s.awayTeam)
@@ -15,6 +15,7 @@ export default function LineupCard() {
   // コントロールパネルで選択中のチームに連動
   const displayTeam = useGameStore((s) => s.lineupDisplayTeam ?? (currentHalf === 'top' ? 'away' : 'home'))
   const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
+  const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
 
   const side = displayTeam
   const team = side === 'away' ? awayTeam : homeTeam
@@ -83,26 +84,45 @@ export default function LineupCard() {
       </div>
 
       {/* 投手情報 */}
-      <PitcherBar pitcher={pitcher} pitchCount={pitchCount} showAppearances={statDisplaySettings.showAppearances} showRecord={statDisplaySettings.showRecord} />
+      <PitcherBar
+        pitcher={pitcher}
+        pitchCount={pitchCount}
+        statDisplaySettings={statDisplaySettings}
+        pitcherLineupPlayer={(() => {
+          const defSide = currentHalf === 'top' ? 'home' : 'away'
+          const defLineup = defSide === 'away' ? awayLineup : homeLineup
+          return defLineup[9]
+        })()}
+        pitcherGameStats={(() => {
+          const defSide = currentHalf === 'top' ? 'home' : 'away'
+          const key = `${defSide}-${pitcher.number}`
+          return pitcherGameStats[key]
+        })()}
+      />
     </div>
   )
 }
 
-function PitcherBar({ pitcher, pitchCount, showAppearances, showRecord }: { pitcher: PlayerInfo; pitchCount: number; showAppearances: boolean; showRecord: boolean }) {
+function PitcherBar({ pitcher, pitchCount, statDisplaySettings, pitcherLineupPlayer, pitcherGameStats }: {
+  pitcher: PlayerInfo;
+  pitchCount: number;
+  statDisplaySettings: StatDisplaySettings;
+  pitcherLineupPlayer?: LineupPlayer;
+  pitcherGameStats?: PitcherGameStats;
+}) {
   if (!pitcher.name) return null
+
+  const pitcherStat = (pitcherLineupPlayer && pitcherLineupPlayer.name === pitcher.name)
+    ? formatPitcherStat(pitcherLineupPlayer, statDisplaySettings, pitcherGameStats)
+    : [statDisplaySettings.showAppearances ? pitcher.statLabel : '', statDisplaySettings.showRecord ? pitcher.stat : ''].filter(Boolean).join(' ')
 
   return (
     <div className="mt-2 pt-1.5 border-t border-gray-600/50 px-2 flex items-center gap-2 text-xs">
       <span className="text-red-400 font-bold text-[10px]">投手</span>
       <span className="font-bold text-white">{pitcher.name}</span>
-      {showAppearances && pitcher.statLabel && (
-        <span className="text-yellow-400/70 text-[10px]">
-          {pitcher.statLabel}
-        </span>
-      )}
-      {showRecord && pitcher.stat && (
-        <span className="text-yellow-400/70 text-[10px]">
-          {pitcher.stat}
+      {pitcherStat && (
+        <span className="text-yellow-400/70 font-mono text-[10px] leading-none self-center">
+          {pitcherStat}
         </span>
       )}
       <span className="text-gray-400 text-[10px] ml-auto">{pitchCount}球</span>

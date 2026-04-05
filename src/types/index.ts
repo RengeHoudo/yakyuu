@@ -248,6 +248,8 @@ export interface GameState {
   lastBatterIndex: number | null
   /** オーバーレイへのスタッツ表示設定 */
   statDisplaySettings: StatDisplaySettings
+  /** NPBスコアページURL */
+  scoreUrl: string
 }
 
 /**
@@ -493,6 +495,7 @@ export const initialGameState: GameState = {
   pitcherStats: {},
   pitcherGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
+  scoreUrl: '',
 }
 
 export { emptyLineup }

@@ -1,4 +1,4 @@
-import type { PositionCategory, RosterPlayer } from '../types'
+import type { Position, PositionCategory, RosterPlayer } from '../types'
 import { parseInningsPitched } from '../types'
 import { normalizePlayerName } from './csvImport'
 
@@ -440,4 +440,129 @@ export async function fetchNpbRoster(presetName: string): Promise<RosterPlayer[]
 
   // 成績を非同期フェッチしてマージ（失敗しても名簿だけは返す）
   return fetchNpbStats(presetName, players)
+}
+
+/** NPBスコアページ内チームコード → プリセット名の逆引きマップ */
+export const NPB_CODE_TO_TEAM_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(NPB_STATS_CODE_MAP).map(([name, code]) => [code, name]),
+)
+
+/** NPBスコアページURLのバリデーション正規表現 */
+export const SCORE_URL_PATTERN = /^https:\/\/npb\.jp\/scores\/(\d{4})\/(\d{4})\/([a-z]{1,2})-([a-z]{1,2})-(\d{2})\/$/
+
+/** スコアページURLからチームコードを抽出する。先頭がホーム、2番目がアウェイ */
+export function parseScoreUrl(url: string): { year: string; date: string; homeCode: string; awayCode: string; gameNum: string } | null {
+  const m = url.match(SCORE_URL_PATTERN)
+  if (!m) return null
+  return { year: m[1]!, date: m[2]!, homeCode: m[3]!, awayCode: m[4]!, gameNum: m[5]! }
+}
+
+/** スコアページの守備位置表記 → Position 型のマッピング */
+const SCORE_POSITION_MAP: Record<string, Position> = {
+  '投': '投', '捕': '捕', '一': '一', '二': '二', '三': '三',
+  '遊': '遊', '左': '左', '中': '中', '右': '右',
+  '指': 'DH', '打': 'DH', 'D': 'DH', 'DH': 'DH',
+}
+
+/** スコアページから抽出した1行分のオーダー */
+export interface ScoreLineupEntry {
+  order: number
+  position: Position
+  name: string
+}
+
+/**
+ * NPBスコアページHTMLから「最新のオーダー」セクションの打順を抽出する。
+ * @returns [leftTeamLineup, rightTeamLineup] — left=アウェイ, right=ホーム
+ */
+export function parseScorePageLineup(html: string): [ScoreLineupEntry[], ScoreLineupEntry[]] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+
+  const orderDiv = doc.getElementById('player-order')
+  if (!orderDiv) return [[], []]
+
+  const halves = orderDiv.querySelectorAll('.half_left, .half_right')
+  const result: [ScoreLineupEntry[], ScoreLineupEntry[]] = [[], []]
+
+  halves.forEach((half, hIdx) => {
+    if (hIdx > 1) return
+    const rows = half.querySelectorAll('table tr')
+    for (const row of rows) {
+      const ths = row.querySelectorAll('th')
+      const tds = row.querySelectorAll('td')
+      if (ths.length < 2 || tds.length < 1) continue
+
+      const orderNum = parseInt(ths[0]?.textContent?.trim() ?? '', 10)
+      if (isNaN(orderNum) || orderNum < 1 || orderNum > 9) continue
+
+      const posRaw = ths[1]?.textContent?.trim() ?? ''
+      const position = SCORE_POSITION_MAP[posRaw] ?? ''
+
+      // 選手名は <a> タグ内、またはプレーンテキスト
+      const nameEl = tds[0]?.querySelector('a') ?? tds[0]
+      const name = nameEl?.textContent?.trim() ?? ''
+      if (!name) continue
+
+      result[hIdx]!.push({ order: orderNum, position, name })
+    }
+  })
+
+  return result
+}
+
+/**
+ * スコアページの略称名（姓のみ or 姓+名の1文字）をロスター選手と突合する。
+ *
+ * マッチング優先度:
+ * 1. 完全一致（スペース除去後）
+ * 2. 姓の完全一致（同姓が1人のみ）
+ * 3. 姓+名の先頭1文字の一致
+ */
+export function matchAbbreviatedName(abbreviatedName: string, roster: RosterPlayer[]): RosterPlayer | null {
+  const abbr = abbreviatedName.replace(/\s+/g, '')
+  if (!abbr) return null
+
+  // 1. 完全一致
+  const exact = roster.find((r) => r.name.replace(/\s+/g, '') === abbr)
+  if (exact) return exact
+
+  // ロスター選手を姓・名に分割してマッチング
+  const parsed = roster.map((r) => {
+    const parts = r.name.split(/\s+/)
+    const lastName = parts[0] ?? ''
+    const firstName = parts[1] ?? ''
+    return { player: r, lastName, firstName }
+  })
+
+  // 2. 姓一致候補を集める
+  const surnameMatches = parsed.filter((p) => p.lastName === abbr)
+  if (surnameMatches.length === 1) return surnameMatches[0]!.player
+
+  // 3. 姓+名先頭1文字の一致
+  for (const p of parsed) {
+    if (p.firstName && p.lastName + p.firstName.charAt(0) === abbr) {
+      return p.player
+    }
+  }
+
+  // 4. 同姓複数でも姓一致なら最初のものを返す（フォールバック）
+  if (surnameMatches.length > 0) return surnameMatches[0]!.player
+
+  return null
+}
+
+/**
+ * NPBスコアページURLからオーダーを取得する。
+ * Vite dev proxy 経由でフェッチする。
+ */
+export async function fetchScorePageLineup(scoreUrl: string): Promise<[ScoreLineupEntry[], ScoreLineupEntry[]]> {
+  const parsed = parseScoreUrl(scoreUrl)
+  if (!parsed) throw new Error('無効なURL形式です')
+
+  const proxyPath = `/api/npb-scores/${parsed.year}/${parsed.date}/${parsed.homeCode}-${parsed.awayCode}-${parsed.gameNum}/`
+  const res = await fetch(proxyPath)
+  if (!res.ok) throw new Error(`NPBスコアページの取得に失敗しました (HTTP ${res.status})`)
+  const html = await res.text()
+  return parseScorePageLineup(html)
 }
