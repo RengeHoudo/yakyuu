@@ -1,6 +1,7 @@
 import type { Position, PositionCategory, RosterPlayer } from '../types'
 import { parseInningsPitched } from '../types'
 import { normalizePlayerName } from './csvImport'
+import { fetchNpbRosterPage, fetchNpbStatsPage, fetchNpbScorePage } from './fetchProxy'
 
 /**
  * プリセット名 → NPBページ内のチーム見出しキーワード
@@ -349,8 +350,8 @@ export async function fetchNpbStats(presetName: string, players: RosterPlayer[])
 
   try {
     const [battingRes, pitchingRes] = await Promise.all([
-      fetch(`/api/npb-stats/batting/${year}/${code}`),
-      fetch(`/api/npb-stats/pitching/${year}/${code}`),
+      fetchNpbStatsPage('batting', year, code),
+      fetchNpbStatsPage('pitching', year, code),
     ])
     if (battingRes.ok) {
       battingMap = parseNpbBattingHtml(await battingRes.text())
@@ -431,9 +432,8 @@ export async function fetchNpbRoster(presetName: string): Promise<RosterPlayer[]
   const keyword = NPB_TEAM_MAP[presetName]
   if (keyword === null || keyword === undefined) return []
 
-  // Vite dev proxy: /api/npb-roster → https://npb.jp/announcement/roster/
-  const url = '/api/npb-roster'
-  const res = await fetch(url)
+  // Vite dev proxy or CORS proxy in production
+  const res = await fetchNpbRosterPage()
   if (!res.ok) throw new Error(`NPBサイトへのアクセスに失敗しました (HTTP ${res.status})`)
   const html = await res.text()
   const players = parseNpbRosterHtml(html, keyword)
@@ -560,8 +560,7 @@ export async function fetchScorePageLineup(scoreUrl: string): Promise<[ScoreLine
   const parsed = parseScoreUrl(scoreUrl)
   if (!parsed) throw new Error('無効なURL形式です')
 
-  const proxyPath = `/api/npb-scores/${parsed.year}/${parsed.date}/${parsed.homeCode}-${parsed.awayCode}-${parsed.gameNum}/`
-  const res = await fetch(proxyPath)
+  const res = await fetchNpbScorePage(parsed.year, parsed.date, parsed.homeCode, parsed.awayCode, parsed.gameNum)
   if (!res.ok) throw new Error(`NPBスコアページの取得に失敗しました (HTTP ${res.status})`)
   const html = await res.text()
   return parseScorePageLineup(html)
