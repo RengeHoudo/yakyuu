@@ -11,10 +11,18 @@ export default function CountControl() {
   const subtractOut = useGameStore((s) => s.subtractOut)
   const pitchCount = useGameStore((s) => s.pitchCount)
   const setPitchCount = useGameStore((s) => s.setPitchCount)
-  const recordHit = useGameStore((s) => s.recordHit)
-  const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
+  const recordSingle = useGameStore((s) => s.recordSingle)
+  const recordDouble = useGameStore((s) => s.recordDouble)
+  const recordTriple = useGameStore((s) => s.recordTriple)
   const recordHomeRun = useGameStore((s) => s.recordHomeRun)
+  const recordWalk = useGameStore((s) => s.recordWalk)
+  const recordIntentionalWalk = useGameStore((s) => s.recordIntentionalWalk)
+  const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
+  const recordUncaughtThirdStrike = useGameStore((s) => s.recordUncaughtThirdStrike)
   const recordGroundout = useGameStore((s) => s.recordGroundout)
+  const recordFlyout = useGameStore((s) => s.recordFlyout)
+  const recordSacrificeBunt = useGameStore((s) => s.recordSacrificeBunt)
+  const recordSacrificeFly = useGameStore((s) => s.recordSacrificeFly)
   const recordDoublePlay = useGameStore((s) => s.recordDoublePlay)
   const recordTriplePlay = useGameStore((s) => s.recordTriplePlay)
 
@@ -138,22 +146,54 @@ export default function CountControl() {
         <p className="text-gray-400 text-xs">出塁</p>
         <div className="flex gap-2">
           <button
-            onClick={recordHit}
-            className="flex-1 bg-blue-700 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm font-bold"
+            onClick={recordSingle}
+            className="flex-1 bg-blue-700 hover:bg-blue-600 text-white px-2 py-2 rounded text-sm font-bold"
           >
-            ヒット
+            単打
+          </button>
+          <button
+            onClick={recordDouble}
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            二塁打
+          </button>
+          <button
+            onClick={recordTriple}
+            className="flex-1 bg-blue-500 hover:bg-blue-400 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            三塁打
+          </button>
+          <button
+            onClick={recordHomeRun}
+            className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            HR
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={recordWalk}
+            className="flex-1 bg-green-700 hover:bg-green-600 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            四球
+          </button>
+          <button
+            onClick={recordIntentionalWalk}
+            className="flex-1 bg-green-800 hover:bg-green-700 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            故意四球
           </button>
           <button
             onClick={recordHitByPitch}
-            className="flex-1 bg-orange-700 hover:bg-orange-600 text-white px-3 py-2 rounded text-sm font-bold"
+            className="flex-1 bg-orange-700 hover:bg-orange-600 text-white px-2 py-2 rounded text-sm font-bold"
           >
             死球
           </button>
           <button
-            onClick={recordHomeRun}
-            className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white px-3 py-2 rounded text-sm font-bold"
+            onClick={recordUncaughtThirdStrike}
+            className="flex-1 bg-purple-700 hover:bg-purple-600 text-white px-2 py-2 rounded text-sm font-bold"
           >
-            HR
+            振逃
           </button>
         </div>
       </div>
@@ -166,17 +206,41 @@ export default function CountControl() {
             onClick={recordGroundout}
             className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
           >
-            ゴロ/犠打
+            ゴロ
           </button>
           <button
-            onClick={recordDoublePlay}
+            onClick={recordFlyout}
             className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            フライ
+          </button>
+          <button
+            onClick={recordSacrificeBunt}
+            disabled={count.outs >= 2}
+            className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            犠打
+          </button>
+          <button
+            onClick={recordSacrificeFly}
+            disabled={count.outs >= 2}
+            className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            犠飛
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={recordDoublePlay}
+            disabled={count.outs >= 2}
+            className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             併殺
           </button>
           <button
             onClick={recordTriplePlay}
-            className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+            disabled={count.outs >= 1}
+            className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             三重殺
           </button>

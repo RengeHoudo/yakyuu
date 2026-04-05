@@ -28,7 +28,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'runnerIndices',
-  'statDisplaySettings',
+  'lastBatterIndex', 'statDisplaySettings',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -47,6 +47,169 @@ function recalcTotals(state: GameState): GameState {
   return { ...state, awayTotal, homeTotal }
 }
 
+/** 数値スタッツの文字列を数値化するヘルパー */
+function numStat(val: string | undefined): number {
+  return Number(val) || 0
+}
+
+/** 打率・出塁率・長打率のフォーマット（.XXX 形式） */
+function formatRate(val: number): string {
+  if (isNaN(val) || !isFinite(val)) return '.000'
+  if (val >= 1) return val.toFixed(3)
+  return val.toFixed(3).replace(/^0/, '')
+}
+
+/** 成績から打率・長打率・出塁率・OPSを再計算する */
+export function recalcBattingStats(player: LineupPlayer): Partial<LineupPlayer> {
+  const atBats = numStat(player.atBats)
+  const hits = numStat(player.hits)
+  const walks = numStat(player.walks)
+  const hbp = numStat(player.hitByPitch)
+  const sf = numStat(player.sacrificeFlies)
+  const totalBases = numStat(player.totalBases)
+
+  const battingAvg = atBats > 0 ? formatRate(hits / atBats) : '.000'
+  const obpDenom = atBats + walks + hbp + sf
+  const obpVal = obpDenom > 0 ? (hits + walks + hbp) / obpDenom : 0
+  const onBasePct = formatRate(obpVal)
+  const slgVal = atBats > 0 ? totalBases / atBats : 0
+  const sluggingPct = formatRate(slgVal)
+  const ops = formatRate(obpVal + slgVal)
+
+  return { battingAvg, onBasePct, sluggingPct, ops }
+}
+
+/** 現在の打者の LineupPlayer 成績を更新する */
+export function updateBatterStats(s: GameState, patch: Record<string, number>): Partial<GameState> {
+  const isAway = s.currentHalf === 'top'
+  const key = isAway ? 'awayLineup' as const : 'homeLineup' as const
+  const idxKey = isAway ? 'awayBatterIndex' as const : 'homeBatterIndex' as const
+  const batterIdx = s[idxKey]
+  const lineup = [...s[key]]
+  const player = { ...lineup[batterIdx]! }
+  for (const [k, increment] of Object.entries(patch)) {
+    ;(player as any)[k] = String(numStat((player as any)[k]) + increment)
+  }
+  Object.assign(player, recalcBattingStats(player))
+  lineup[batterIdx] = player
+  return { [key]: lineup }
+}
+
+/** 走者進塁を適用し、生還数を返す */
+export function advanceRunners(
+  s: GameState,
+  basesForBatter: 0 | 1 | 2 | 3 | 4,
+  _forceOnly: boolean,
+): { runners: Runners; runnerIndices: RunnerIndices; runsScored: number } {
+  const ri = s.runnerIndices
+  const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+  let runsScored = 0
+
+  if (basesForBatter === 4) {
+    if (ri.first !== null) runsScored++
+    if (ri.second !== null) runsScored++
+    if (ri.third !== null) runsScored++
+    runsScored++ // batter
+    return {
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      runsScored,
+    }
+  }
+
+  if (basesForBatter === 3) {
+    if (ri.first !== null) runsScored++
+    if (ri.second !== null) runsScored++
+    if (ri.third !== null) runsScored++
+    return {
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: currentBatterIdx },
+      runsScored,
+    }
+  }
+
+  if (basesForBatter === 2) {
+    if (ri.third !== null) runsScored++
+    const newRI: RunnerIndices = { first: null, second: currentBatterIdx, third: null }
+    const newR: Runners = { first: false, second: true, third: false }
+    if (ri.first !== null) {
+      newRI.third = ri.first
+      newR.third = true
+      if (ri.second !== null) {
+        runsScored++ // 2nd pushed home by 1st→3rd
+      }
+    } else if (ri.second !== null) {
+      newRI.third = ri.second
+      newR.third = true
+    }
+    return { runners: newR, runnerIndices: newRI, runsScored }
+  }
+
+  if (basesForBatter === 1) {
+    const newRI: RunnerIndices = { first: currentBatterIdx, second: null, third: null }
+    const newR: Runners = { first: true, second: false, third: false }
+    if (ri.first !== null) {
+      newRI.second = ri.first
+      newR.second = true
+      if (ri.second !== null) {
+        newRI.third = ri.second
+        newR.third = true
+        if (ri.third !== null) {
+          runsScored++ // 3rd pushed home
+        }
+      } else {
+        if (ri.third !== null) {
+          newRI.third = ri.third
+          newR.third = true
+        }
+      }
+    } else {
+      if (ri.second !== null) {
+        newRI.second = ri.second
+        newR.second = true
+      }
+      if (ri.third !== null) {
+        newRI.third = ri.third
+        newR.third = true
+      }
+    }
+    return { runners: newR, runnerIndices: newRI, runsScored }
+  }
+
+  // basesForBatter === 0: 全走者を1塁ずつ進塁（犠打・WP/PB）
+  const newRI: RunnerIndices = { first: null, second: null, third: null }
+  const newR: Runners = { first: false, second: false, third: false }
+  if (ri.third !== null) runsScored++
+  if (ri.second !== null) { newRI.third = ri.second; newR.third = true }
+  if (ri.first !== null) { newRI.second = ri.first; newR.second = true }
+  return { runners: newR, runnerIndices: newRI, runsScored }
+}
+
+/** 得点を現在のイニングに加算する */
+function addScoreRuns(s: GameState, runs: number): Partial<GameState> {
+  if (runs <= 0) return {}
+  const innings = [...s.innings]
+  const idx = innings.findIndex((inn) => inn.inning === s.currentInning)
+  if (idx === -1) return {}
+  const inn = { ...innings[idx]! }
+  inn[s.currentHalf] = (inn[s.currentHalf] ?? 0) + runs
+  innings[idx] = inn
+  const totals = recalcTotals({ ...extractGameState(s), innings })
+  return { innings: totals.innings, awayTotal: totals.awayTotal, homeTotal: totals.homeTotal }
+}
+
+/** 指定打順インデックスの打者の rbi を +n し成績再計算する */
+function addRBIToBatter(s: GameState, batterIndex: number, count: number = 1): Partial<GameState> {
+  const isAway = s.currentHalf === 'top'
+  const key = isAway ? 'awayLineup' as const : 'homeLineup' as const
+  const lineup = [...s[key]]
+  const player = { ...lineup[batterIndex]! }
+  player.rbi = String(numStat(player.rbi) + count)
+  Object.assign(player, recalcBattingStats(player))
+  lineup[batterIndex] = player
+  return { [key]: lineup }
+}
+
 interface GameActions {
   addBall: () => void
   addStrike: () => void
@@ -59,12 +222,20 @@ interface GameActions {
   setBatter: (info: PlayerInfo) => void
   setPitcher: (info: PlayerInfo) => void
   addHit: (team: 'away' | 'home') => void
-  recordHit: () => void
+  recordSingle: () => void
+  recordDouble: () => void
+  recordTriple: () => void
   recordHitByPitch: () => void
   recordHomeRun: () => void
+  recordWalk: () => void
+  recordIntentionalWalk: () => void
   recordGroundout: () => void
+  recordFlyout: () => void
   recordDoublePlay: () => void
   recordTriplePlay: () => void
+  recordSacrificeBunt: () => void
+  recordSacrificeFly: () => void
+  recordUncaughtThirdStrike: () => void
   addError: (team: 'away' | 'home') => void
   setHits: (team: 'away' | 'home', count: number) => void
   setErrors: (team: 'away' | 'home', count: number) => void
@@ -102,8 +273,12 @@ interface GameActions {
   setLineupDisplayTeam: (team: 'away' | 'home') => void
   /** 塁に攻撃チーム打順インデックスをセットする。nullはクリア */
   setRunnerAtBase: (base: keyof RunnerIndices, lineupIndex: number | null) => void
-  /** 指定打順インデックスの走者が得点する（点数+1・塁クリア） */
-  scoreRunner: (lineupIndex: number) => void
+  /** H🏏 打点あり生還: lastBatterIndex の rbi +1 */
+  scoreRunnerWithRBI: (lineupIndex: number) => void
+  /** H🏃‍♀️ 打点なし生還: 得点のみ */
+  scoreRunnerNoRBI: (lineupIndex: number) => void
+  /** 暴投/パスボール: 全走者1塁ずつ進塁、3塁走者は打点なし生還 */
+  advanceRunnersOnWildPitch: () => void
   /** オーバーレイ表示スタッツ設定を部分更新する */
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
 }
@@ -119,7 +294,20 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const balls = s.count.balls + 1
           if (balls >= 4) {
-            return { ...applyWalk(s), ...advanceBatterPatch(s), pitchCount: s.pitchCount + 1 }
+            const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+            const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+            const statPatch = updateBatterStats(s, {
+              plateAppearances: 1,
+              walks: 1,
+              ...(runsScored > 0 ? { rbi: runsScored } : {}),
+            })
+            return {
+              ...applyWalk(s),
+              ...statPatch,
+              ...advanceBatterPatch(s),
+              pitchCount: s.pitchCount + 1,
+              lastBatterIndex: currentBatterIdx,
+            }
           }
           return { count: { ...s.count, balls }, pitchCount: s.pitchCount + 1 }
         }),
@@ -128,17 +316,20 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const strikes = s.count.strikes + 1
           if (strikes >= 3) {
+            const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+            const statPatch = updateBatterStats(s, {
+              plateAppearances: 1,
+              atBats: 1,
+              strikeouts: 1,
+            })
             const outs = s.count.outs + 1
             if (outs >= 3) {
-              // 最後の1球を旧投手に属させた後にイニング進行（pitchCount を上書きしない）
-              // まず現在の打者インデックスを進めてから攻守交代
               const sWithPitch = { ...extractGameState(s), pitchCount: s.pitchCount + 1 } as GameState
-              return { ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
+              return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
             }
-            // 三振（3アウト未満）: 打者を次に進める
             const newPitchCount = s.pitchCount + 1
             const sWithOuts = { ...extractGameState(s), count: { ...s.count, outs }, pitchCount: newPitchCount }
-            return { ...advanceBatterPatch(sWithOuts), pitchCount: newPitchCount }
+            return { ...statPatch, ...advanceBatterPatch(sWithOuts), pitchCount: newPitchCount, lastBatterIndex: currentBatterIdx }
           }
           return { count: { ...s.count, strikes }, pitchCount: s.pitchCount + 1 }
         }),
@@ -179,7 +370,7 @@ export const useGameStore = create<GameStore>()(
           return { runners: newRunners, runnerIndices: newRI }
         }),
 
-      scoreRunner: (lineupIndex) =>
+      scoreRunnerWithRBI: (lineupIndex) =>
         set((s) => {
           const ri = s.runnerIndices
           let base: keyof RunnerIndices | null = null
@@ -188,20 +379,39 @@ export const useGameStore = create<GameStore>()(
           else if (ri.third === lineupIndex) base = 'third'
           if (!base) return s
 
-          const attackHalf = s.currentHalf === 'top' ? 'top' as const : 'bottom' as const
-          const innings = [...s.innings]
-          const idx = innings.findIndex((inn) => inn.inning === s.currentInning)
-          if (idx === -1) return s
-          const inn = { ...innings[idx]! }
-          inn[attackHalf] = (inn[attackHalf] ?? 0) + 1
-          innings[idx] = inn
-          const totals = recalcTotals({ ...extractGameState(s), innings })
+          const scorePatch = addScoreRuns(s, 1)
+          const rbiPatch = s.lastBatterIndex !== null ? addRBIToBatter(s, s.lastBatterIndex) : {}
           return {
-            innings: totals.innings,
-            awayTotal: totals.awayTotal,
-            homeTotal: totals.homeTotal,
+            ...scorePatch,
+            ...rbiPatch,
             runners: { ...s.runners, [base]: false },
             runnerIndices: { ...ri, [base]: null },
+          }
+        }),
+
+      scoreRunnerNoRBI: (lineupIndex) =>
+        set((s) => {
+          const ri = s.runnerIndices
+          let base: keyof RunnerIndices | null = null
+          if (ri.first === lineupIndex) base = 'first'
+          else if (ri.second === lineupIndex) base = 'second'
+          else if (ri.third === lineupIndex) base = 'third'
+          if (!base) return s
+
+          return {
+            ...addScoreRuns(s, 1),
+            runners: { ...s.runners, [base]: false },
+            runnerIndices: { ...ri, [base]: null },
+          }
+        }),
+
+      advanceRunnersOnWildPitch: () =>
+        set((s) => {
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 0, false)
+          return {
+            runners,
+            runnerIndices,
+            ...addScoreRuns(s, runsScored),
           }
         }),
 
@@ -265,60 +475,313 @@ export const useGameStore = create<GameStore>()(
           ? { awayHits: s.awayHits + 1 }
           : { homeHits: s.homeHits + 1 }),
 
-      recordHit: () =>
+      recordSingle: () =>
         set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 1, true)
           const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
           const hitsPatch = attackTeam === 'away'
             ? { awayHits: s.awayHits + 1 }
             : { homeHits: s.homeHits + 1 }
-          return { ...hitsPatch, pitchCount: s.pitchCount + 1, ...advanceBatterPatch(s) }
-        }),
-
-      recordHitByPitch: () =>
-        set((s) => ({
-          ...applyWalk(s),
-          ...advanceBatterPatch(s),
-          pitchCount: s.pitchCount + 1,
-        })),
-
-      recordHomeRun: () =>
-        set((s) => {
-          const runnerCount =
-            (s.runners.first ? 1 : 0) +
-            (s.runners.second ? 1 : 0) +
-            (s.runners.third ? 1 : 0)
-          const totalRuns = runnerCount + 1  // 走者 + 打者本人
-
-          const innings = [...s.innings]
-          const idx = innings.findIndex((inn) => inn.inning === s.currentInning)
-          if (idx !== -1) {
-            const inn = { ...innings[idx]! }
-            const half = s.currentHalf
-            inn[half] = (inn[half] ?? 0) + totalRuns
-            innings[idx] = inn
-          }
-          const totals = recalcTotals({ ...extractGameState(s), innings })
-
-          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
-          const hitsPatch = attackTeam === 'away'
-            ? { awayHits: s.awayHits + 1 }
-            : { homeHits: s.homeHits + 1 }
-
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, hits: 1, totalBases: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
           return {
             ...hitsPatch,
-            innings: totals.innings,
-            awayTotal: totals.awayTotal,
-            homeTotal: totals.homeTotal,
-            runners: { first: false, second: false, third: false },
-            runnerIndices: { first: null, second: null, third: null },
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            runners, runnerIndices,
             pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
           }
         }),
 
+      recordDouble: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 2, false)
+          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
+          const hitsPatch = attackTeam === 'away'
+            ? { awayHits: s.awayHits + 1 }
+            : { homeHits: s.homeHits + 1 }
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, hits: 1, doubles: 1, totalBases: 2,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...hitsPatch,
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            runners, runnerIndices,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+            ...advanceBatterPatch(s),
+          }
+        }),
+
+      recordTriple: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 3, false)
+          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
+          const hitsPatch = attackTeam === 'away'
+            ? { awayHits: s.awayHits + 1 }
+            : { homeHits: s.homeHits + 1 }
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, hits: 1, triples: 1, totalBases: 3,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...hitsPatch,
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            runners, runnerIndices,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+            ...advanceBatterPatch(s),
+          }
+        }),
+
+      recordHitByPitch: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            hitByPitch: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...applyWalk(s),
+            ...statPatch,
+            ...advanceBatterPatch(s),
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordHomeRun: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 4, false)
+          const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
+          const hitsPatch = attackTeam === 'away'
+            ? { awayHits: s.awayHits + 1 }
+            : { homeHits: s.homeHits + 1 }
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, hits: 1, homeRuns: 1, totalBases: 4, rbi: runsScored,
+          })
+          return {
+            ...hitsPatch,
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            runners, runnerIndices,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+            ...advanceBatterPatch(s),
+          }
+        }),
+
+      recordWalk: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            walks: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...applyWalk(s),
+            ...statPatch,
+            ...advanceBatterPatch(s),
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordIntentionalWalk: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            walks: 1,
+            intentionalWalks: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...applyWalk(s),
+            ...statPatch,
+            ...advanceBatterPatch(s),
+            lastBatterIndex: currentBatterIdx,
+            // 故意四球は投球数を加算しない
+          }
+        }),
+
       recordGroundout: () => set((s) => applyOutPlay(s, 1)),
-      recordDoublePlay: () => set((s) => applyOutPlay(s, 2)),
-      recordTriplePlay: () => set((s) => applyOutPlay(s, 3)),
+      recordFlyout: () => set((s) => applyOutPlay(s, 1)),
+
+      recordDoublePlay: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          // 先頭走者を除去
+          const newRunners = { ...s.runners }
+          const newRI = { ...s.runnerIndices }
+          if (newRI.first !== null) {
+            newRI.first = null
+            newRunners.first = false
+          } else if (newRI.second !== null) {
+            newRI.second = null
+            newRunners.second = false
+          }
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, groundedIntoDoublePlays: 1,
+          })
+          const newOuts = s.count.outs + 2
+          const sWithPitch: GameState = {
+            ...extractGameState(s),
+            runners: newRunners,
+            runnerIndices: newRI,
+            pitchCount: s.pitchCount + 1,
+          }
+          if (newOuts >= 3) {
+            return {
+              ...statPatch,
+              runners: newRunners, runnerIndices: newRI,
+              ...advanceBatterPatch(s),
+              ...advanceInningPatch(sWithPitch),
+            }
+          }
+          const sWithOuts: GameState = {
+            ...sWithPitch,
+            count: { ...s.count, outs: newOuts },
+          }
+          return {
+            ...statPatch,
+            runners: newRunners, runnerIndices: newRI,
+            ...advanceBatterPatch(sWithOuts),
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordTriplePlay: () =>
+        set((s) => {
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1,
+          })
+          const sWithPitch: GameState = {
+            ...extractGameState(s),
+            runners: { first: false, second: false, third: false },
+            runnerIndices: { first: null, second: null, third: null },
+            pitchCount: s.pitchCount + 1,
+          }
+          return {
+            ...statPatch,
+            runners: { first: false, second: false, third: false },
+            runnerIndices: { first: null, second: null, third: null },
+            ...advanceBatterPatch(s),
+            ...advanceInningPatch(sWithPitch),
+          }
+        }),
+
+      recordSacrificeBunt: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 0, false)
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            sacrificeHits: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          const newOuts = s.count.outs + 1
+          const scorePatch = addScoreRuns(s, runsScored)
+          const sWithPitch: GameState = {
+            ...extractGameState(s),
+            runners, runnerIndices,
+            pitchCount: s.pitchCount + 1,
+          }
+          if (newOuts >= 3) {
+            return {
+              ...statPatch, ...scorePatch,
+              runners, runnerIndices,
+              ...advanceBatterPatch(s),
+              ...advanceInningPatch(sWithPitch),
+            }
+          }
+          const sWithOuts: GameState = {
+            ...sWithPitch,
+            count: { ...s.count, outs: newOuts },
+          }
+          return {
+            ...statPatch, ...scorePatch,
+            runners, runnerIndices,
+            ...advanceBatterPatch(sWithOuts),
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordSacrificeFly: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          // 3塁走者必須 → 生還
+          const newRunners = { ...s.runners, third: false }
+          const newRI = { ...s.runnerIndices, third: null }
+          const runsScored = s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            sacrificeFlies: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          const newOuts = s.count.outs + 1
+          const scorePatch = addScoreRuns(s, runsScored)
+          const sWithPitch: GameState = {
+            ...extractGameState(s),
+            runners: newRunners, runnerIndices: newRI,
+            pitchCount: s.pitchCount + 1,
+          }
+          if (newOuts >= 3) {
+            return {
+              ...statPatch, ...scorePatch,
+              runners: newRunners, runnerIndices: newRI,
+              ...advanceBatterPatch(s),
+              ...advanceInningPatch(sWithPitch),
+            }
+          }
+          const sWithOuts: GameState = {
+            ...sWithPitch,
+            count: { ...s.count, outs: newOuts },
+          }
+          return {
+            ...statPatch, ...scorePatch,
+            runners: newRunners, runnerIndices: newRI,
+            ...advanceBatterPatch(sWithOuts),
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordUncaughtThirdStrike: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          // 振り逃げ: 打者→1塁、フォース押し出し（2アウト時のみ1塁走者あり可）
+          const { runners, runnerIndices, runsScored } = advanceRunners(s, 1, true)
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1, strikeouts: 1,
+          })
+          return {
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            runners, runnerIndices,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+            ...advanceBatterPatch(s),
+          }
+        }),
 
       addError: (team) =>
         set((s) => team === 'away'
@@ -622,15 +1085,20 @@ useGameStore.subscribe((state) => {
   broadcastState(extractGameState(state))
 })
 
-/** アウトプレー共通: outsToAdd 個アウト & 打者交代 & 投球数+1 */
+/** アウトプレー共通: outsToAdd 個アウト & 打者交代 & 投球数+1 & 打者成績更新 */
 function applyOutPlay(s: GameState, outsToAdd: number): Partial<GameState> {
+  const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+  const statPatch = updateBatterStats(s, {
+    plateAppearances: 1,
+    atBats: 1,
+  })
   const newOuts = s.count.outs + outsToAdd
   const sWithPitch: GameState = { ...extractGameState(s), pitchCount: s.pitchCount + 1 }
   if (newOuts >= 3) {
-    return { ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
+    return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
   }
   const sWithOuts: GameState = { ...extractGameState(s), count: { ...s.count, outs: newOuts } }
-  return { ...advanceBatterPatch(sWithOuts), pitchCount: s.pitchCount + 1 }
+  return { ...statPatch, ...advanceBatterPatch(sWithOuts), pitchCount: s.pitchCount + 1, lastBatterIndex: currentBatterIdx }
 }
 
 /** 打者交代: 次の打者をセットし B/S カウントをリセット（アウト数は維持） */
@@ -764,6 +1232,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
     count: { balls: 0, strikes: 0, outs: 0 },
     runners: { first: false, second: false, third: false },
     runnerIndices: { first: null, second: null, third: null },
+    lastBatterIndex: null,
     pitchCount: restoredPitchCount,
     pitcherStats,
     batter: newBatter,

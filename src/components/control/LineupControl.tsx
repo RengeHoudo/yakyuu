@@ -26,7 +26,8 @@ function BatterRow({
   isAttacking,
   runnerBase,
   onSetBase,
-  onScore,
+  onScoreWithRBI,
+  onScoreNoRBI,
   showStats,
 }: {
   player: LineupPlayer
@@ -37,7 +38,8 @@ function BatterRow({
   isAttacking: boolean
   runnerBase: keyof RunnerIndices | null
   onSetBase: (base: keyof RunnerIndices) => void
-  onScore: () => void
+  onScoreWithRBI: () => void
+  onScoreNoRBI: () => void
   showStats: boolean
 }) {
   const sorted = sortedRoster(roster)
@@ -142,16 +144,28 @@ function BatterRow({
               </button>
             ))}
             <button
-              onClick={onScore}
+              onClick={onScoreWithRBI}
               disabled={!runnerBase}
-              className={`text-xs w-6 py-1 rounded font-bold ${
+              className={`text-xs w-8 py-1 rounded font-bold ${
                 runnerBase
                   ? 'bg-red-600 hover:bg-red-500 text-white'
                   : 'bg-gray-800 text-gray-600 cursor-not-allowed'
               }`}
-              title="生還（点数+1）"
+              title="生還・打点あり（追加進塁）"
             >
-              H
+              H🏏
+            </button>
+            <button
+              onClick={onScoreNoRBI}
+              disabled={!runnerBase}
+              className={`text-xs w-8 py-1 rounded font-bold ${
+                runnerBase
+                  ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+              title="生還・打点なし（盗塁・WP/PB等）"
+            >
+              H🏃
             </button>
           </div>
         )}
@@ -279,7 +293,8 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const prevBatter = useGameStore((s) => s.prevBatter)
   const setLineupDisplayTeam = useGameStore((s) => s.setLineupDisplayTeam)
   const setRunnerAtBase = useGameStore((s) => s.setRunnerAtBase)
-  const scoreRunner = useGameStore((s) => s.scoreRunner)
+  const scoreRunnerWithRBI = useGameStore((s) => s.scoreRunnerWithRBI)
+  const scoreRunnerNoRBI = useGameStore((s) => s.scoreRunnerNoRBI)
 
   const isAttacking = (side === 'away' && currentHalf === 'top') ||
     (side === 'home' && currentHalf === 'bottom')
@@ -436,7 +451,8 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
               isAttacking={isAttacking}
               runnerBase={runnerBase}
               onSetBase={(base) => setRunnerAtBase(base, runnerIndices[base] === idx ? null : idx)}
-              onScore={() => scoreRunner(idx)}
+              onScoreWithRBI={() => scoreRunnerWithRBI(idx)}
+              onScoreNoRBI={() => scoreRunnerNoRBI(idx)}
               showStats={showStats}
             />
           )

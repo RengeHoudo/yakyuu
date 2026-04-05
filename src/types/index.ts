@@ -170,6 +170,8 @@ export interface GameState {
   pitcherStats: Record<string, number>
   /** 各塁に出塁している攻撃チーム打順インデックス */
   runnerIndices: RunnerIndices
+  /** 直前にプレーした打者の打順インデックス（打点帰属用）。null = 帰属先なし */
+  lastBatterIndex: number | null
   /** オーバーレイへのスタッツ表示設定 */
   statDisplaySettings: StatDisplaySettings
 }
@@ -292,6 +294,7 @@ export const initialGameState: GameState = {
   runners: { first: false, second: false, third: false },
   batter: { name: '秋山 翔吾', number: '55', stat: '.278 4本 28打点 OPS.735', statLabel: '' },
   runnerIndices: { first: null, second: null, third: null },
+  lastBatterIndex: null,
   pitcher: { name: '森下 暢仁', number: '18', stat: '10勝5敗', statLabel: '22登板' },
   awayLineup: [...CARP_LINEUP],
   homeLineup: [...CARP_LINEUP],

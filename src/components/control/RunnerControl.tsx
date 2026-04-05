@@ -3,12 +3,15 @@ import { useGameStore } from '../../store/useGameStore'
 export default function RunnerControl() {
   const runners = useGameStore((s) => s.runners)
   const setRunner = useGameStore((s) => s.setRunner)
+  const advanceRunnersOnWildPitch = useGameStore((s) => s.advanceRunnersOnWildPitch)
 
   const bases = [
     { key: 'first' as const, label: '一塁' },
     { key: 'second' as const, label: '二塁' },
     { key: 'third' as const, label: '三塁' },
   ]
+
+  const hasRunners = runners.first || runners.second || runners.third
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -29,6 +32,14 @@ export default function RunnerControl() {
           </button>
         ))}
       </div>
+
+      <button
+        onClick={advanceRunnersOnWildPitch}
+        disabled={!hasRunners}
+        className="bg-purple-800 hover:bg-purple-700 disabled:opacity-30 text-white px-4 py-2 rounded text-sm font-bold w-full"
+      >
+        WP/PB 進塁
+      </button>
     </div>
   )
 }
