@@ -222,15 +222,18 @@ function PitcherRow({
   roster,
   onSelect,
   onChange,
+  showStats,
 }: {
   player: LineupPlayer
   roster: RosterPlayer[]
   onSelect: () => void
   onChange: (p: LineupPlayer) => void
+  showStats: boolean
 }) {
   const pitchers = sortedRoster(roster).filter((r) => r.positionCategory === '投手')
   return (
-    <div className="flex items-center gap-1.5 text-sm rounded px-1.5 py-1 bg-red-900/20 border border-red-800/30">
+    <div className="text-sm rounded px-1.5 py-1 space-y-0.5 bg-red-900/20 border border-red-800/30">
+    <div className="flex items-center gap-1.5">
       <span className="text-red-400 w-4 text-center text-xs shrink-0 font-bold">
         P
       </span>
@@ -309,6 +312,35 @@ function PitcherRow({
       >
         登板
       </button>
+    </div>
+    {showStats && (
+      <div className="flex items-center gap-1 pl-5">
+        <input
+          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+          placeholder="自責点"
+          value={player.earnedRuns || ''}
+          onChange={(e) => onChange({ ...player, earnedRuns: e.target.value })}
+        />
+        <input
+          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+          placeholder="与四球"
+          value={player.walksAllowed || ''}
+          onChange={(e) => onChange({ ...player, walksAllowed: e.target.value })}
+        />
+        <input
+          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+          placeholder="被安打"
+          value={player.hitsAllowed || ''}
+          onChange={(e) => onChange({ ...player, hitsAllowed: e.target.value })}
+        />
+        <input
+          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
+          placeholder="投球回"
+          value={player.inningsPitched || ''}
+          onChange={(e) => onChange({ ...player, inningsPitched: e.target.value })}
+        />
+      </div>
+    )}
     </div>
   )
 }
@@ -511,6 +543,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
           roster={roster}
           onSelect={() => selectBatter(side, 9)}
           onChange={(p) => setLineupPlayer(side, 9, p)}
+          showStats={showStats}
         />
       )}
     </div>
