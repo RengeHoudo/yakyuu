@@ -88,22 +88,46 @@ describe('parseRosterCsv 名前正規化', () => {
     expect(result[0]!.name).toBe('秋山 翔吾')
   })
 
-  it('全角英字を半角に変換する（例: Ｓ.ビシエド）', () => {
+  it('全角英字を半角に変換したあと先頭のアルファベット+ピリオドを除去する（例: Ｓ.ビシエド）', () => {
     const csv = `内野手,32,Ｓ.ビシエド`
     const result = parseRosterCsv(csv)
-    expect(result[0]!.name).toBe('S.ビシエド')
+    expect(result[0]!.name).toBe('ビシエド')
   })
 
-  it('全角ピリオド・ドットを半角に変換する', () => {
+  it('全角ピリオド・ドットを半角に変換したあとアルファベット+ピリオドを除去する', () => {
     const csv = `内野手,99,Ａ．スミス`
     const result = parseRosterCsv(csv)
-    expect(result[0]!.name).toBe('A.スミス')
+    expect(result[0]!.name).toBe('スミス')
   })
 
   it('先頭・末尾の空白をトリムする', () => {
     const csv = `外野手,10, 田中　選手 `
     const result = parseRosterCsv(csv)
     expect(result[0]!.name).toBe('田中 選手')
+  })
+
+  it('先頭が半角アルファベット+ピリオドの名前を除去する（E.モンテロ → モンテロ）', () => {
+    const csv = `外野手,53,E.モンテロ`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('モンテロ')
+  })
+
+  it('複数文字のアルファベット+ピリオドも除去する（JD.マルティネス → マルティネス）', () => {
+    const csv = `外野手,28,JD.マルティネス`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('マルティネス')
+  })
+
+  it('ピリオドがなければそのまま（純粋なカタカナ名）', () => {
+    const csv = `外野手,99,マクブルーム`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('マクブルーム')
+  })
+
+  it('日本語氏名はそのまま（アルファベット除去対象外）', () => {
+    const csv = `内野手,51,小園 海斗`
+    const result = parseRosterCsv(csv)
+    expect(result[0]!.name).toBe('小園 海斗')
   })
 })
 

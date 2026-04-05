@@ -9,6 +9,7 @@ const VALID_CATEGORIES: PositionCategory[] = ['投手', '捕手', '内野手', '
  * - 全角スペース → 半角スペース
  * - 全角英数字・記号（！-～）→ 半角
  * - 連続スペース → 1つに
+ * - 先頭の "アルファベット." プレフィックスを除去（例: E.モンテロ → モンテロ）
  */
 export function normalizePlayerName(name: string): string {
   return name
@@ -16,6 +17,7 @@ export function normalizePlayerName(name: string): string {
     .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
     .replace(/\s{2,}/g, ' ')
     .trim()
+    .replace(/^[A-Za-z]+\./, '')
 }
 
 /**
