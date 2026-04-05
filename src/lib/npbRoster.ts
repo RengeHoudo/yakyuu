@@ -220,8 +220,8 @@ export function parseNpbPitchingHtml(html: string): Map<string, PitchingStats> {
     if (nameIdx === -1) continue
 
     const gIdx = headers.findIndex((h) => h === '試合' || h === '試' || h === '登板' || h === 'G')
-    const wIdx = headers.findIndex((h) => h === '勝')
-    const lIdx = headers.findIndex((h) => h === '敗')
+    const wIdx = headers.findIndex((h) => h === '勝' || h === '勝利')
+    const lIdx = headers.findIndex((h) => h === '敗' || h === '敗北')
 
     // 勝・敗列がなければ投手成績テーブルでない
     if (wIdx === -1 || lIdx === -1) continue

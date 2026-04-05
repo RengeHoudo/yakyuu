@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LineupPlayer, StatDisplaySettings } from '../index'
-import { defaultStatDisplaySettings, formatBatterStat } from '../index'
+import { defaultStatDisplaySettings, formatBatterStat, formatPitcherStat } from '../index'
 
 const SAMPLE_PLAYER: LineupPlayer = {
   order: 1,
@@ -172,5 +172,66 @@ describe('formatBatterStat – 値が空の場合', () => {
     }
     const result = formatBatterStat(player, settings)
     expect(result).toBe('.250')
+  })
+})
+
+// ─────────────────────────────────────────────
+// formatPitcherStat
+// ─────────────────────────────────────────────
+
+const SAMPLE_PITCHER: LineupPlayer = {
+  order: 10,
+  name: '森下 暢仁',
+  number: '18',
+  position: '投',
+  appearances: '22',
+  record: '5勝3敗',
+}
+
+const EMPTY_PITCHER: LineupPlayer = {
+  order: 10,
+  name: '森下 暢仁',
+  number: '18',
+  position: '投',
+}
+
+describe('formatPitcherStat – デフォルト設定', () => {
+  it('デフォルト設定では空文字（showAppearances/showRecord ともに false）', () => {
+    const result = formatPitcherStat(SAMPLE_PITCHER)
+    expect(result).toBe('')
+  })
+})
+
+describe('formatPitcherStat – 個別フラグ', () => {
+  function makeSettings(overrides: Partial<StatDisplaySettings>): StatDisplaySettings {
+    return {
+      showBattingAvg: false,
+      showHomeRuns: false,
+      showRbi: false,
+      showOps: false,
+      showAppearances: false,
+      showRecord: false,
+      ...overrides,
+    }
+  }
+
+  it('showAppearances=true: 登板数が "22登板" 形式で含まれる', () => {
+    const result = formatPitcherStat(SAMPLE_PITCHER, makeSettings({ showAppearances: true }))
+    expect(result).toBe('22登板')
+  })
+
+  it('showRecord=true: 勝敗が含まれる', () => {
+    const result = formatPitcherStat(SAMPLE_PITCHER, makeSettings({ showRecord: true }))
+    expect(result).toBe('5勝3敗')
+  })
+
+  it('showAppearances + showRecord: スペース区切りで結合', () => {
+    const result = formatPitcherStat(SAMPLE_PITCHER, makeSettings({ showAppearances: true, showRecord: true }))
+    expect(result).toBe('22登板 5勝3敗')
+  })
+
+  it('値が未設定のフィールドはスキップ', () => {
+    const result = formatPitcherStat(EMPTY_PITCHER, makeSettings({ showAppearances: true, showRecord: true }))
+    expect(result).toBe('')
   })
 })

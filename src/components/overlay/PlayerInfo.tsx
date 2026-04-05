@@ -1,5 +1,5 @@
 import { useGameStore } from '../../store/useGameStore'
-import { formatBatterStat } from '../../types'
+import { formatBatterStat, formatPitcherStat } from '../../types'
 
 export default function PlayerInfo() {
   const batter = useGameStore((s) => s.batter)
@@ -19,6 +19,13 @@ export default function PlayerInfo() {
   const batterStat = (lineupPlayer && lineupPlayer.name === batter.name)
     ? formatBatterStat(lineupPlayer, statDisplaySettings)
     : batter.stat
+
+  // 守備チームのラインナップから投手スタッツを動的計算
+  const defendingLineup = currentHalf === 'top' ? homeLineup : awayLineup
+  const pitcherLineupPlayer = defendingLineup[9]
+  const pitcherStat = (pitcherLineupPlayer && pitcherLineupPlayer.name === pitcher.name)
+    ? formatPitcherStat(pitcherLineupPlayer, statDisplaySettings)
+    : [statDisplaySettings.showAppearances ? pitcher.statLabel : '', statDisplaySettings.showRecord ? pitcher.stat : ''].filter(Boolean).join(' ')
 
   const hasBatter = batter.name.length > 0
   const hasPitcher = pitcher.name.length > 0
@@ -42,14 +49,9 @@ export default function PlayerInfo() {
         <div className="flex items-center gap-2">
           <span className="text-red-400 font-bold text-xs">投手</span>
           <span className="font-bold">{pitcher.name}</span>
-          {statDisplaySettings.showAppearances && pitcher.statLabel && (
+          {pitcherStat && (
             <span className="text-yellow-400 text-xs">
-              {pitcher.statLabel}
-            </span>
-          )}
-          {statDisplaySettings.showRecord && pitcher.stat && (
-            <span className="text-yellow-400 text-xs">
-              {pitcher.stat}
+              {pitcherStat}
             </span>
           )}
           <span className="text-gray-300 text-xs ml-1">

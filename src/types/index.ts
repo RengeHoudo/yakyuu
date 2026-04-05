@@ -239,6 +239,15 @@ export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySet
   return parts.join(' ')
 }
 
+/** 投手のスタッツ文字列を生成 */
+export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySettings): string {
+  const s = settings ?? defaultStatDisplaySettings
+  const parts: string[] = []
+  if (s.showAppearances && player.appearances) parts.push(`${player.appearances}登板`)
+  if (s.showRecord && player.record) parts.push(player.record)
+  return parts.join(' ')
+}
+
 // デモ用: 広島東洋カープ 2025スタメン
 export const CARP_LINEUP: LineupPlayer[] = [
   { order: 1, name: '秋山 翔吾', number: '55', position: '左', battingAvg: '.278', homeRuns: '4', rbi: '28', ops: '.735' },

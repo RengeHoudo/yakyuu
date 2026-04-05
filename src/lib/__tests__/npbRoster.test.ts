@@ -350,6 +350,41 @@ describe('parseNpbPitchingHtml', () => {
     const map = parseNpbPitchingHtml(html)
     expect(map.size).toBe(0)
   })
+
+  it('NPB実ページ形式のヘッダー（勝利・敗北）でもパースできる', () => {
+    const trs = '<tr><td>森下 暢仁</td><td>22</td><td>10</td><td>4</td></tr>'
+    const html = `<html><body>
+      <table>
+        <thead><tr><th>選手</th><th>登板</th><th>勝利</th><th>敗北</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </body></html>`
+    const map = parseNpbPitchingHtml(html)
+    const stats = map.get('森下暢仁')
+    expect(stats).toBeDefined()
+    expect(stats?.appearances).toBe('22')
+    expect(stats?.record).toBe('10勝4敗')
+  })
+
+  it('左投げマーカー（*）付き選手名を正しくパースする', () => {
+    const trs = '<tr><td>＊床田 寛樹</td><td>20</td><td>8</td><td>6</td></tr>'
+    const html = `<html><body>
+      <table>
+        <thead><tr><th>選手</th><th>登板</th><th>勝利</th><th>敗北</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </body></html>`
+    const map = parseNpbPitchingHtml(html)
+    // ＊が除去されたキーで取得できる
+    expect(map.has('床田寛樹')).toBe(true)
+    expect(map.get('床田寛樹')?.record).toBe('8勝6敗')
+  })
+
+  it('半角*付き選手名も正しくパースする', () => {
+    const html = makePitchingHtml([['*床田 寛樹', '20', '8', '6']])
+    const map = parseNpbPitchingHtml(html)
+    expect(map.has('床田寛樹')).toBe(true)
+  })
 })
 
 // ─────────────────────────────────────────────
