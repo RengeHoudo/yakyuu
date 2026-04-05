@@ -2223,3 +2223,71 @@ describe('recordHomeRun ホームラン', () => {
     expect(s().homeHits).toBe(2)
   })
 })
+
+// ─────────────────────────────────────────────
+// statDisplaySettings（オーバーレイ表示設定）
+// ─────────────────────────────────────────────
+
+describe('statDisplaySettings – 初期状態', () => {
+  it('statDisplaySettings が存在する', () => {
+    expect(s().statDisplaySettings).toBeDefined()
+  })
+
+  it('showBattingAvg がデフォルト true', () => {
+    expect(s().statDisplaySettings.showBattingAvg).toBe(true)
+  })
+
+  it('showHomeRuns がデフォルト false', () => {
+    expect(s().statDisplaySettings.showHomeRuns).toBe(false)
+  })
+
+  it('showRbi がデフォルト false', () => {
+    expect(s().statDisplaySettings.showRbi).toBe(false)
+  })
+
+  it('showOps がデフォルト false', () => {
+    expect(s().statDisplaySettings.showOps).toBe(false)
+  })
+
+  it('showAppearances がデフォルト false', () => {
+    expect(s().statDisplaySettings.showAppearances).toBe(false)
+  })
+
+  it('showRecord がデフォルト false', () => {
+    expect(s().statDisplaySettings.showRecord).toBe(false)
+  })
+})
+
+describe('setStatDisplaySettings', () => {
+  it('showHomeRuns を true に変更できる', () => {
+    s().setStatDisplaySettings({ showHomeRuns: true })
+    expect(s().statDisplaySettings.showHomeRuns).toBe(true)
+  })
+
+  it('部分更新で他の設定に影響しない', () => {
+    s().setStatDisplaySettings({ showHomeRuns: true })
+    expect(s().statDisplaySettings.showBattingAvg).toBe(true)
+    expect(s().statDisplaySettings.showRbi).toBe(false)
+    expect(s().statDisplaySettings.showOps).toBe(false)
+    expect(s().statDisplaySettings.showAppearances).toBe(false)
+    expect(s().statDisplaySettings.showRecord).toBe(false)
+  })
+
+  it('全フィールドを一度に更新できる', () => {
+    s().setStatDisplaySettings({
+      showBattingAvg: false,
+      showHomeRuns: true,
+      showRbi: true,
+      showOps: true,
+      showAppearances: true,
+      showRecord: true,
+    })
+    const settings = s().statDisplaySettings
+    expect(settings.showBattingAvg).toBe(false)
+    expect(settings.showHomeRuns).toBe(true)
+    expect(settings.showRbi).toBe(true)
+    expect(settings.showOps).toBe(true)
+    expect(settings.showAppearances).toBe(true)
+    expect(settings.showRecord).toBe(true)
+  })
+})

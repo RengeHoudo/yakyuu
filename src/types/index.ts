@@ -126,6 +126,8 @@ export interface GameState {
   pitcherStats: Record<string, number>
   /** 各塁に出塁している攻撃チーム打順インデックス */
   runnerIndices: RunnerIndices
+  /** オーバーレイへのスタッツ表示設定 */
+  statDisplaySettings: StatDisplaySettings
 }
 
 /**
@@ -161,13 +163,33 @@ function emptyLineup(): LineupPlayer[] {
   }))
 }
 
+/** オーバーレイへの打者・投手スタッツ表示設定 */
+export interface StatDisplaySettings {
+  showBattingAvg: boolean
+  showHomeRuns: boolean
+  showRbi: boolean
+  showOps: boolean
+  showAppearances: boolean
+  showRecord: boolean
+}
+
+export const defaultStatDisplaySettings: StatDisplaySettings = {
+  showBattingAvg: true,
+  showHomeRuns: false,
+  showRbi: false,
+  showOps: false,
+  showAppearances: false,
+  showRecord: false,
+}
+
 /** 打者のスタッツ文字列を生成 */
-export function formatBatterStat(player: LineupPlayer): string {
+export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySettings): string {
+  const s = settings ?? defaultStatDisplaySettings
   const parts: string[] = []
-  if (player.battingAvg) parts.push(player.battingAvg)
-  if (player.homeRuns) parts.push(`${player.homeRuns}本`)
-  if (player.rbi) parts.push(`${player.rbi}打点`)
-  if (player.ops) parts.push(`OPS${player.ops}`)
+  if (s.showBattingAvg && player.battingAvg) parts.push(player.battingAvg)
+  if (s.showHomeRuns && player.homeRuns) parts.push(`${player.homeRuns}本`)
+  if (s.showRbi && player.rbi) parts.push(`${player.rbi}打点`)
+  if (s.showOps && player.ops) parts.push(`OPS${player.ops}`)
   return parts.join(' ')
 }
 
@@ -246,6 +268,7 @@ export const initialGameState: GameState = {
   overlayScale: 1,
   lineupDisplayTeam: 'away',
   pitcherStats: {},
+  statDisplaySettings: { ...defaultStatDisplaySettings },
 }
 
 export { emptyLineup }

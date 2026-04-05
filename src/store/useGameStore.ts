@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PlayerInfo, Runners, RunnerIndices } from '../types'
+import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PlayerInfo, Runners, RunnerIndices, StatDisplaySettings } from '../types'
 import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
@@ -28,6 +28,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'runnerIndices',
+  'statDisplaySettings',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -103,6 +104,8 @@ interface GameActions {
   setRunnerAtBase: (base: keyof RunnerIndices, lineupIndex: number | null) => void
   /** 指定打順インデックスの走者が得点する（点数+1・塁クリア） */
   scoreRunner: (lineupIndex: number) => void
+  /** オーバーレイ表示スタッツ設定を部分更新する */
+  setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
 }
 
 type GameStore = GameState & GameActions
@@ -201,6 +204,11 @@ export const useGameStore = create<GameStore>()(
             runnerIndices: { ...ri, [base]: null },
           }
         }),
+
+      setStatDisplaySettings: (settings) =>
+        set((s) => ({
+          statDisplaySettings: { ...s.statDisplaySettings, ...settings },
+        })),
 
       addRun: (team) =>
         set((s) => {

@@ -14,6 +14,7 @@ export default function LineupCard() {
   const pitchCount = useGameStore((s) => s.pitchCount)
   // コントロールパネルで選択中のチームに連動
   const displayTeam = useGameStore((s) => s.lineupDisplayTeam ?? (currentHalf === 'top' ? 'away' : 'home'))
+  const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
 
   const side = displayTeam
   const team = side === 'away' ? awayTeam : homeTeam
@@ -49,7 +50,7 @@ export default function LineupCard() {
         {batters.map((player, idx) => {
           if (!player.name) return null
           const isCurrent = idx === currentIdx
-          const statStr = formatBatterStat(player)
+          const statStr = formatBatterStat(player, statDisplaySettings)
           return (
             <div
               key={player.order}
@@ -82,24 +83,24 @@ export default function LineupCard() {
       </div>
 
       {/* 投手情報 */}
-      <PitcherBar pitcher={pitcher} pitchCount={pitchCount} />
+      <PitcherBar pitcher={pitcher} pitchCount={pitchCount} showAppearances={statDisplaySettings.showAppearances} showRecord={statDisplaySettings.showRecord} />
     </div>
   )
 }
 
-function PitcherBar({ pitcher, pitchCount }: { pitcher: PlayerInfo; pitchCount: number }) {
+function PitcherBar({ pitcher, pitchCount, showAppearances, showRecord }: { pitcher: PlayerInfo; pitchCount: number; showAppearances: boolean; showRecord: boolean }) {
   if (!pitcher.name) return null
 
   return (
     <div className="mt-2 pt-1.5 border-t border-gray-600/50 px-2 flex items-center gap-2 text-xs">
       <span className="text-red-400 font-bold text-[10px]">投手</span>
       <span className="font-bold text-white">{pitcher.name}</span>
-      {pitcher.statLabel && (
+      {showAppearances && pitcher.statLabel && (
         <span className="text-yellow-400/70 text-[10px]">
           {pitcher.statLabel}
         </span>
       )}
-      {pitcher.stat && (
+      {showRecord && pitcher.stat && (
         <span className="text-yellow-400/70 text-[10px]">
           {pitcher.stat}
         </span>

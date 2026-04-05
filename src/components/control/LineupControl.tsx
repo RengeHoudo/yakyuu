@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
 import type { LineupPlayer, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
-import { CARP_LINEUP, HAWKS_LINEUP } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
@@ -392,18 +391,6 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             ✕名簿
           </button>
         )}
-        <button
-          onClick={() => setLineup(side, [...CARP_LINEUP])}
-          className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded text-xs"
-        >
-          サンプル：広島カープ
-        </button>
-        <button
-          onClick={() => setLineup(side, [...HAWKS_LINEUP])}
-          className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded text-xs"
-        >
-          サンプル：ソフトバンク
-        </button>
       </div>
       {csvError && (
         <div className="bg-red-900/50 border border-red-500 rounded px-3 py-1.5 text-red-300 text-xs">
@@ -450,11 +437,42 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
 }
 
 export default function LineupControl() {
+  const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
+  const setStatDisplaySettings = useGameStore((s) => s.setStatDisplaySettings)
+
+  const STAT_TOGGLES: { key: keyof typeof statDisplaySettings; label: string }[] = [
+    { key: 'showBattingAvg', label: '打率' },
+    { key: 'showHomeRuns', label: 'HR' },
+    { key: 'showRbi', label: '打点' },
+    { key: 'showOps', label: 'OPS' },
+    { key: 'showAppearances', label: '登板' },
+    { key: 'showRecord', label: '勝敗' },
+  ]
+
   return (
     <div className="space-y-3">
       <h2 className="text-white font-bold text-lg">打順・選手</h2>
+
       <TeamLineupPanel side="away" />
       <TeamLineupPanel side="home" />
+
+      {/* Overlay 表示設定 */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+        <p className="text-gray-400 text-xs font-bold mb-2">Overlay 表示項目</p>
+        <div className="flex flex-wrap gap-2">
+          {STAT_TOGGLES.map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={statDisplaySettings[key]}
+                onChange={(e) => setStatDisplaySettings({ [key]: e.target.checked })}
+                className="accent-accent w-3.5 h-3.5"
+              />
+              <span className="text-gray-300 text-xs">{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

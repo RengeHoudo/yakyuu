@@ -1,9 +1,24 @@
 import { useGameStore } from '../../store/useGameStore'
+import { formatBatterStat } from '../../types'
 
 export default function PlayerInfo() {
   const batter = useGameStore((s) => s.batter)
   const pitcher = useGameStore((s) => s.pitcher)
   const pitchCount = useGameStore((s) => s.pitchCount)
+  const currentHalf = useGameStore((s) => s.currentHalf)
+  const awayBatterIndex = useGameStore((s) => s.awayBatterIndex)
+  const homeBatterIndex = useGameStore((s) => s.homeBatterIndex)
+  const awayLineup = useGameStore((s) => s.awayLineup)
+  const homeLineup = useGameStore((s) => s.homeLineup)
+  const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
+
+  // 現在攻撃中チームのラインナップから打者スタッツを動的計算
+  const attackingLineup = currentHalf === 'top' ? awayLineup : homeLineup
+  const batterIdx = currentHalf === 'top' ? awayBatterIndex : homeBatterIndex
+  const lineupPlayer = attackingLineup[batterIdx]
+  const batterStat = (lineupPlayer && lineupPlayer.name === batter.name)
+    ? formatBatterStat(lineupPlayer, statDisplaySettings)
+    : batter.stat
 
   const hasBatter = batter.name.length > 0
   const hasPitcher = pitcher.name.length > 0
@@ -16,9 +31,9 @@ export default function PlayerInfo() {
         <div className="flex items-center gap-2">
           <span className="text-accent font-bold text-xs">打者</span>
           <span className="font-bold">{batter.name}</span>
-          {batter.stat && (
+          {batterStat && (
             <span className="text-yellow-400 text-xs">
-              {batter.statLabel ? `${batter.statLabel} ` : ''}{batter.stat}
+              {batter.statLabel ? `${batter.statLabel} ` : ''}{batterStat}
             </span>
           )}
         </div>
@@ -27,12 +42,12 @@ export default function PlayerInfo() {
         <div className="flex items-center gap-2">
           <span className="text-red-400 font-bold text-xs">投手</span>
           <span className="font-bold">{pitcher.name}</span>
-          {pitcher.statLabel && (
+          {statDisplaySettings.showAppearances && pitcher.statLabel && (
             <span className="text-yellow-400 text-xs">
               {pitcher.statLabel}
             </span>
           )}
-          {pitcher.stat && (
+          {statDisplaySettings.showRecord && pitcher.stat && (
             <span className="text-yellow-400 text-xs">
               {pitcher.stat}
             </span>
