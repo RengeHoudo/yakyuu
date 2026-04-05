@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRosterCsv } from '../csvImport'
+import { parseLineupCsv, parseRosterCsv } from '../csvImport'
 
 // ─────────────────────────────────────────────
 // parseRosterCsv — 正常系
@@ -181,5 +181,76 @@ describe('parseRosterCsv 異常系', () => {
     const csv = `守備位置,背番号,名前
 コーチ,1,田中`
     expect(() => parseRosterCsv(csv)).toThrow('有効な選手データがありません')
+  })
+})
+
+// ─────────────────────────────────────────────
+// parseLineupCsv — 投手列拡張 (F1)
+// ─────────────────────────────────────────────
+
+describe('parseLineupCsv \u2013 \u6295\u624b\u5217\u62e1\u5f35 (F1)', () => {
+  it('10行目に saves, holds, era が含まれる', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,セーブ,ホールド,防御率
+10,森下,18,投,,,,,,5勝3敗,20,10,2.45`
+    const result = parseLineupCsv(csv)
+    const pitcher = result.find((p) => p.order === 10)
+    expect(pitcher?.saves).toBe('20')
+    expect(pitcher?.holds).toBe('10')
+    expect(pitcher?.era).toBe('2.45')
+  })
+
+  it('勝敗列から wins/losses が分離される', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,セーブ,ホールド,防御率
+10,森下,18,投,,,,,,5勝3敗,,,`
+    const result = parseLineupCsv(csv)
+    const pitcher = result.find((p) => p.order === 10)
+    expect(pitcher?.wins).toBe('5')
+    expect(pitcher?.losses).toBe('3')
+  })
+
+  it('投手列が空でも正常動作', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,セーブ,ホールド,防御率
+10,森下,18,投,,,,,,,,, `
+    const result = parseLineupCsv(csv)
+    const pitcher = result.find((p) => p.order === 10)
+    expect(pitcher?.saves).toBeUndefined()
+    expect(pitcher?.holds).toBeUndefined()
+    expect(pitcher?.era).toBeUndefined()
+  })
+
+  it('既存の野手行フォーマットに影響しない', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,セーブ,ホールド,防御率
+1,秋山,55,左,.278,4,28,.735,,,,, `
+    const result = parseLineupCsv(csv)
+    const batter = result.find((p) => p.order === 1)
+    expect(batter?.battingAvg).toBe('.278')
+    expect(batter?.homeRuns).toBe('4')
+    expect(batter?.rbi).toBe('28')
+    expect(batter?.ops).toBe('.735')
+  })
+})
+
+// ─────────────────────────────────────────────
+// parseRosterCsv — 投手カテゴリ列拡張 (F1)
+// ─────────────────────────────────────────────
+
+describe('parseRosterCsv \u2013 \u6295\u624b\u30ab\u30c6\u30b4\u30ea\u5217\u62e1\u5f35 (F1)', () => {
+  it('投手カテゴリの追加列を読み取る', () => {
+    const csv = `守備位置,背番号,名前,登板,勝,敗,セーブ,ホールド,防御率
+投手,18,森下 暢仁,22,10,4,20,10,2.45`
+    const result = parseRosterCsv(csv)
+    expect(result[0]?.appearances).toBe('22')
+    expect(result[0]?.wins).toBe('10')
+    expect(result[0]?.losses).toBe('4')
+    expect(result[0]?.saves).toBe('20')
+    expect(result[0]?.holds).toBe('10')
+    expect(result[0]?.era).toBe('2.45')
+  })
+
+  it('投手以外のカテゴリは従来通り打撃成績', () => {
+    const csv = `守備位置,背番号,名前,打率,HR,打点,OPS
+外野手,55,秋山 翔吾,.278,4,28,.735`
+    const result = parseRosterCsv(csv)
+    expect(result[0]?.battingAvg).toBe('.278')
   })
 })

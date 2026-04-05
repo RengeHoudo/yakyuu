@@ -4,6 +4,16 @@ const VALID_POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '
 
 const VALID_CATEGORIES: PositionCategory[] = ['投手', '捕手', '内野手', '外野手']
 
+function parseWinsFromRecord(record: string): string | undefined {
+  const m = record.match(/(\d+)勝/)
+  return m ? m[1] : undefined
+}
+
+function parseLossesFromRecord(record: string): string | undefined {
+  const m = record.match(/(\d+)敗/)
+  return m ? m[1] : undefined
+}
+
 /**
  * 選手名の正規化
  * - 全角スペース → 半角スペース
@@ -57,6 +67,13 @@ export function parseRosterCsv(text: string): RosterPlayer[] {
       homeRuns: cols[4] || undefined,
       rbi: cols[5] || undefined,
       ops: cols[6] || undefined,
+      // 投手用追加列（守備位置が投手の場合は cols[3]〜[8] を投手用に使用）
+      appearances: posRaw === '投手' ? (cols[3] || undefined) : undefined,
+      wins: posRaw === '投手' ? (cols[4] || undefined) : undefined,
+      losses: posRaw === '投手' ? (cols[5] || undefined) : undefined,
+      saves: posRaw === '投手' ? (cols[6] || undefined) : undefined,
+      holds: posRaw === '投手' ? (cols[7] || undefined) : undefined,
+      era: posRaw === '投手' ? (cols[8] || undefined) : undefined,
     })
   }
 
@@ -106,13 +123,19 @@ export function parseLineupCsv(text: string): LineupPlayer[] {
 
     if (order === 10) {
       // 投手
+      const recordStr = cols[9] ?? ''
       players.push({
         order,
         name,
         number,
         position: position || '投',
-        appearances: cols[8] ?? '',
-        record: cols[9] ?? '',
+        appearances: cols[8] || undefined,
+        wins: parseWinsFromRecord(recordStr),
+        losses: parseLossesFromRecord(recordStr),
+        record: recordStr || undefined,
+        saves: cols[10] || undefined,
+        holds: cols[11] || undefined,
+        era: cols[12] || undefined,
       })
     } else {
       // 野手

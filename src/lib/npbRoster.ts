@@ -1,4 +1,5 @@
 import type { PositionCategory, RosterPlayer } from '../types'
+import { parseInningsPitched } from '../types'
 import { normalizePlayerName } from './csvImport'
 
 /**
@@ -75,7 +76,30 @@ export interface BattingStats {
 
 export interface PitchingStats {
   appearances?: string
-  record?: string
+  wins?: string
+  losses?: string
+  saves?: string
+  holds?: string
+  holdPoints?: string
+  completeGames?: string
+  shutouts?: string
+  noWalkGames?: string
+  winPct?: string
+  battersFaced?: string
+  inningsPitched?: string
+  hitsAllowed?: string
+  homeRunsAllowed?: string
+  walksAllowed?: string
+  intentionalWalksAllowed?: string
+  hitByPitchAllowed?: string
+  strikeoutsThrown?: string
+  wildPitches?: string
+  balks?: string
+  runsAllowed?: string
+  earnedRuns?: string
+  era?: string
+  whip?: string    // (hitsAllowed + walksAllowed) / inningsPitched から計算
+  record?: string  // 後方互換用: "${wins}勝${losses}敗"
 }
 
 /**
@@ -201,6 +225,7 @@ export function parseNpbBattingHtml(html: string): Map<string, BattingStats> {
 
 /**
  * NPB個人投手成績HTMLから 選手名キー → 投手成績 の Map を生成する。
+ * 全24列（登板〜防御率）に対応。WHIP はパース時に計算して格納する。
  */
 export function parseNpbPitchingHtml(html: string): Map<string, PitchingStats> {
   const parser = new DOMParser()
@@ -219,12 +244,39 @@ export function parseNpbPitchingHtml(html: string): Map<string, PitchingStats> {
     const nameIdx = headers.findIndex((h) => h.includes('選手'))
     if (nameIdx === -1) continue
 
-    const gIdx = headers.findIndex((h) => h === '試合' || h === '試' || h === '登板' || h === 'G')
     const wIdx = headers.findIndex((h) => h === '勝' || h === '勝利')
     const lIdx = headers.findIndex((h) => h === '敗' || h === '敗北')
 
     // 勝・敗列がなければ投手成績テーブルでない
     if (wIdx === -1 || lIdx === -1) continue
+
+    const gIdx   = headers.findIndex((h) => h === '試合' || h === '試' || h === '登板' || h === 'G')
+    const sIdx   = headers.findIndex((h) => h === 'セーブ' || h === 'S' || h === 'セ')
+    const hIdx   = headers.findIndex((h) => h === 'ホールド' || h === 'H')
+    const hpIdx  = headers.findIndex((h) => h === 'HP' || h === 'ＨＰ')
+    const cgIdx  = headers.findIndex((h) => h === '完投')
+    const shoIdx = headers.findIndex((h) => h === '完封勝' || h === '完封')
+    const nwIdx  = headers.findIndex((h) => h === '無四球')
+    const wrIdx  = headers.findIndex((h) => h === '勝率')
+    const bfIdx  = headers.findIndex((h) => h === '打者')
+    const ipIdx  = headers.findIndex((h) => h === '投球回')
+    const haIdx  = headers.findIndex((h) => h === '安打')
+    const hraIdx = headers.findIndex((h) => h === '本塁打')
+    const bbIdx  = headers.findIndex((h) => h === '四球')
+    const ibbIdx = headers.findIndex((h) => h === '故意四' || h === '故意四球')
+    const hbpIdx = headers.findIndex((h) => h === '死球')
+    const soIdx  = headers.findIndex((h) => h === '三振')
+    const wpIdx  = headers.findIndex((h) => h === '暴投')
+    const bkIdx  = headers.findIndex((h) => h === 'ボーク')
+    const raIdx  = headers.findIndex((h) => h === '失点')
+    const erIdx  = headers.findIndex((h) => h === '自責点')
+    const eraIdx = headers.findIndex((h) => h === '防御率')
+
+    const cellVal = (cells: Element[], idx: number): string | undefined => {
+      if (idx === -1) return undefined
+      const v = cells[idx]?.textContent?.trim()
+      return v && v !== '-' && !v.startsWith('-') ? v : undefined
+    }
 
     const dataRows = Array.from(table.querySelectorAll('tbody tr, tr')).filter(
       (row) => row.querySelectorAll('td').length > nameIdx,
@@ -239,13 +291,43 @@ export function parseNpbPitchingHtml(html: string): Map<string, PitchingStats> {
       if (!key) continue
 
       const stats: PitchingStats = {}
-      if (gIdx !== -1) {
-        const g = cells[gIdx]?.textContent?.trim()
-        if (g && g !== '-') stats.appearances = g
+
+      const g = cellVal(cells, gIdx); if (g) stats.appearances = g
+      const w = cellVal(cells, wIdx); if (w) stats.wins = w
+      const l = cellVal(cells, lIdx); if (l) stats.losses = l
+      const sv = cellVal(cells, sIdx); if (sv) stats.saves = sv
+      const h2 = cellVal(cells, hIdx); if (h2) stats.holds = h2
+      const hp = cellVal(cells, hpIdx); if (hp) stats.holdPoints = hp
+      const cg = cellVal(cells, cgIdx); if (cg) stats.completeGames = cg
+      const sho = cellVal(cells, shoIdx); if (sho) stats.shutouts = sho
+      const nw = cellVal(cells, nwIdx); if (nw) stats.noWalkGames = nw
+      const wr = cellVal(cells, wrIdx); if (wr) stats.winPct = wr
+      const bf = cellVal(cells, bfIdx); if (bf) stats.battersFaced = bf
+      const ip = cellVal(cells, ipIdx); if (ip) stats.inningsPitched = ip
+      const ha = cellVal(cells, haIdx); if (ha) stats.hitsAllowed = ha
+      const hra = cellVal(cells, hraIdx); if (hra) stats.homeRunsAllowed = hra
+      const bb = cellVal(cells, bbIdx); if (bb) stats.walksAllowed = bb
+      const ibb = cellVal(cells, ibbIdx); if (ibb) stats.intentionalWalksAllowed = ibb
+      const hbp = cellVal(cells, hbpIdx); if (hbp) stats.hitByPitchAllowed = hbp
+      const so = cellVal(cells, soIdx); if (so) stats.strikeoutsThrown = so
+      const wp = cellVal(cells, wpIdx); if (wp) stats.wildPitches = wp
+      const bk = cellVal(cells, bkIdx); if (bk) stats.balks = bk
+      const ra = cellVal(cells, raIdx); if (ra) stats.runsAllowed = ra
+      const er = cellVal(cells, erIdx); if (er) stats.earnedRuns = er
+      const era = cellVal(cells, eraIdx); if (era) stats.era = era
+
+      // WHIP 計算（被安打 + 与四球）/ 投球回
+      if (ip && ha && bb) {
+        const ipNum = parseInningsPitched(ip)
+        if (ipNum > 0) {
+          const whipVal = (Number(ha) + Number(bb)) / ipNum
+          stats.whip = whipVal.toFixed(2)
+        }
       }
-      const w = cells[wIdx]?.textContent?.trim()
-      const l = cells[lIdx]?.textContent?.trim()
-      if (w && l && w !== '-' && l !== '-') stats.record = `${w}勝${l}敗`
+
+      // record: 後方互換用
+      if (w && l) stats.record = `${w}勝${l}敗`
+
       result.set(key, stats)
     }
     if (result.size > 0) return result

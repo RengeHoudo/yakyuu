@@ -28,6 +28,7 @@ function BatterRow({
   onSetBase,
   onScoreWithRBI,
   onScoreNoRBI,
+  onScoreUnearned,
   showStats,
 }: {
   player: LineupPlayer
@@ -40,6 +41,7 @@ function BatterRow({
   onSetBase: (base: keyof RunnerIndices) => void
   onScoreWithRBI: () => void
   onScoreNoRBI: () => void
+  onScoreUnearned: () => void
   showStats: boolean
 }) {
   const sorted = sortedRoster(roster)
@@ -167,6 +169,18 @@ function BatterRow({
             >
               H🏃
             </button>
+            <button
+              onClick={onScoreUnearned}
+              disabled={!runnerBase}
+              className={`text-xs w-8 py-1 rounded font-bold ${
+                runnerBase
+                  ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+              title="非自責点生還（エラー等）"
+            >
+              H❌
+            </button>
           </div>
         )}
       </div>
@@ -229,7 +243,36 @@ function PitcherRow({
           value=""
           onChange={(e) => {
             const r = pitchers.find((r) => `${r.number}__${r.name}` === e.target.value)
-            if (r) onChange({ ...player, name: r.name, number: r.number, appearances: r.appearances ?? '', record: r.record ?? '' })
+            if (r) onChange({
+              ...player,
+              name: r.name,
+              number: r.number,
+              appearances: r.appearances ?? '',
+              record: r.record ?? '',
+              wins: r.wins,
+              losses: r.losses,
+              saves: r.saves,
+              holds: r.holds,
+              holdPoints: r.holdPoints,
+              completeGames: r.completeGames,
+              shutouts: r.shutouts,
+              noWalkGames: r.noWalkGames,
+              winPct: r.winPct,
+              battersFaced: r.battersFaced,
+              inningsPitched: r.inningsPitched,
+              hitsAllowed: r.hitsAllowed,
+              homeRunsAllowed: r.homeRunsAllowed,
+              walksAllowed: r.walksAllowed,
+              intentionalWalksAllowed: r.intentionalWalksAllowed,
+              hitByPitchAllowed: r.hitByPitchAllowed,
+              strikeoutsThrown: r.strikeoutsThrown,
+              wildPitches: r.wildPitches,
+              balks: r.balks,
+              runsAllowed: r.runsAllowed,
+              earnedRuns: r.earnedRuns,
+              era: r.era,
+              whip: r.whip,
+            })
           }}
         >
           <option value="">{player.name || '-- 投手を選択 --'}</option>
@@ -295,6 +338,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const setRunnerAtBase = useGameStore((s) => s.setRunnerAtBase)
   const scoreRunnerWithRBI = useGameStore((s) => s.scoreRunnerWithRBI)
   const scoreRunnerNoRBI = useGameStore((s) => s.scoreRunnerNoRBI)
+  const scoreRunnerUnearned = useGameStore((s) => s.scoreRunnerUnearned)
 
   const isAttacking = (side === 'away' && currentHalf === 'top') ||
     (side === 'home' && currentHalf === 'bottom')
@@ -453,6 +497,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
               onSetBase={(base) => setRunnerAtBase(base, runnerIndices[base] === idx ? null : idx)}
               onScoreWithRBI={() => scoreRunnerWithRBI(idx)}
               onScoreNoRBI={() => scoreRunnerNoRBI(idx)}
+              onScoreUnearned={() => scoreRunnerUnearned(idx)}
               showStats={showStats}
             />
           )
@@ -483,6 +528,10 @@ export default function LineupControl() {
     { key: 'showOps', label: 'OPS' },
     { key: 'showAppearances', label: '登板' },
     { key: 'showRecord', label: '勝敗' },
+    { key: 'showSaves', label: 'セーブ' },
+    { key: 'showHolds', label: 'ホールド' },
+    { key: 'showEra', label: '防御率' },
+    { key: 'showWhip', label: 'WHIP' },
   ]
 
   return (

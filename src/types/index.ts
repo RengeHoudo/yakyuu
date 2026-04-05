@@ -37,7 +37,30 @@ export interface RosterPlayer {
   onBasePct?: string        // 出塁率
   // 投手用
   appearances?: string  // 投手: 登板数
-  record?: string       // 投手: 勝敗（例: "5勝3敗"）
+  record?: string       // 投手: 勝敗（後方互換）
+  wins?: string
+  losses?: string
+  saves?: string
+  holds?: string
+  holdPoints?: string
+  completeGames?: string
+  shutouts?: string
+  noWalkGames?: string
+  winPct?: string
+  battersFaced?: string
+  inningsPitched?: string
+  hitsAllowed?: string
+  homeRunsAllowed?: string
+  walksAllowed?: string
+  intentionalWalksAllowed?: string
+  hitByPitchAllowed?: string
+  strikeoutsThrown?: string
+  wildPitches?: string
+  balks?: string
+  runsAllowed?: string
+  earnedRuns?: string
+  era?: string
+  whip?: string
 }
 
 export interface Count {
@@ -57,6 +80,13 @@ export interface RunnerIndices {
   first: number | null
   second: number | null
   third: number | null
+}
+
+/** 各塁の走者を出塁させた責任投手キー。キー形式: "${team}-${number}"。null = 誰もいない */
+export interface RunnerResponsiblePitcher {
+  first: string | null
+  second: string | null
+  third: string | null
 }
 
 export interface PlayerInfo {
@@ -98,7 +128,30 @@ export interface LineupPlayer {
   onBasePct?: string
   // 投手用（10番目）
   appearances?: string  // 登板数
-  record?: string       // 勝敗（例: "5勝3敗"）
+  record?: string       // 勝敗（後方互換）
+  wins?: string
+  losses?: string
+  saves?: string
+  holds?: string
+  holdPoints?: string
+  completeGames?: string
+  shutouts?: string
+  noWalkGames?: string
+  winPct?: string
+  battersFaced?: string
+  inningsPitched?: string
+  hitsAllowed?: string
+  homeRunsAllowed?: string
+  walksAllowed?: string
+  intentionalWalksAllowed?: string
+  hitByPitchAllowed?: string
+  strikeoutsThrown?: string
+  wildPitches?: string
+  balks?: string
+  runsAllowed?: string
+  earnedRuns?: string
+  era?: string
+  whip?: string
 }
 
 export interface InningScore {
@@ -113,6 +166,23 @@ export interface PlayLogEntry {
   inning: number
   half: HalfInning
   text: string
+}
+
+/** 投手の試合中成績トラッキング用 */
+export interface PitcherGameStats {
+  hitsAllowed: number
+  walksAllowed: number
+  runsAllowed: number
+  earnedRunsAllowed: number
+  outsRecorded: number
+}
+
+export const defaultPitcherGameStats: PitcherGameStats = {
+  hitsAllowed: 0,
+  walksAllowed: 0,
+  runsAllowed: 0,
+  earnedRunsAllowed: 0,
+  outsRecorded: 0,
 }
 
 export type MascotMode = 'idle' | 'hidden' | 'celebration' | 'waiting'
@@ -168,8 +238,12 @@ export interface GameState {
   lineupDisplayTeam: 'away' | 'home'
   /** 投手ごとの累計投球数。キー形式: "${team}-${number}" (例: "home-18") */
   pitcherStats: Record<string, number>
+  /** 投手ごとの試合中成績。キー形式: "${team}-${number}" */
+  pitcherGameStats: Record<string, PitcherGameStats>
   /** 各塁に出塁している攻撃チーム打順インデックス */
   runnerIndices: RunnerIndices
+  /** 各塁の走者を出塁させた責任投手キー */
+  runnerResponsiblePitcher: RunnerResponsiblePitcher
   /** 直前にプレーした打者の打順インデックス（打点帰属用）。null = 帰属先なし */
   lastBatterIndex: number | null
   /** オーバーレイへのスタッツ表示設定 */
@@ -211,12 +285,19 @@ function emptyLineup(): LineupPlayer[] {
 
 /** オーバーレイへの打者・投手スタッツ表示設定 */
 export interface StatDisplaySettings {
+  // 打者用（既存）
   showBattingAvg: boolean
   showHomeRuns: boolean
   showRbi: boolean
   showOps: boolean
+  // 投手用（既存）
   showAppearances: boolean
   showRecord: boolean
+  // 投手用（新規）
+  showSaves: boolean
+  showHolds: boolean
+  showEra: boolean
+  showWhip: boolean
 }
 
 export const defaultStatDisplaySettings: StatDisplaySettings = {
@@ -226,6 +307,74 @@ export const defaultStatDisplaySettings: StatDisplaySettings = {
   showOps: false,
   showAppearances: false,
   showRecord: false,
+  showSaves: false,
+  showHolds: false,
+  showEra: false,
+  showWhip: false,
+}
+
+/**
+ * 投球回文字列を数値に変換する。
+ * NPBの投球回は "142.1" 形式 (.1=1/3アウト, .2=2/3アウト)。
+ * @example parseInningsPitched("142.1") // => 142.333...
+ */
+export function parseInningsPitched(ip: string): number {
+  const parts = ip.split('.')
+  const full = parseInt(parts[0] ?? '0', 10)
+  const frac = parseInt(parts[1] ?? '0', 10) // 0, 1, 2 (= 0/3, 1/3, 2/3)
+  return full + frac / 3
+}
+
+/**
+ * 投手のシーズン勝敗成績文字列を生成。 0の項目は省略。全て0なら空文字。
+ * @example formatPitcherRecord({ wins: '2', losses: '1', holds: '40', saves: '20' }) // => "2W/1L/40H/20S"
+ */
+export function formatPitcherRecord(player: {
+  wins?: string
+  losses?: string
+  holds?: string
+  saves?: string
+}): string {
+  const parts: string[] = []
+  const w = Number(player.wins) || 0
+  const l = Number(player.losses) || 0
+  const h = Number(player.holds) || 0
+  const s = Number(player.saves) || 0
+  if (w > 0) parts.push(`${w}W`)
+  if (l > 0) parts.push(`${l}L`)
+  if (h > 0) parts.push(`${h}H`)
+  if (s > 0) parts.push(`${s}S`)
+  return parts.join('/')
+}
+
+/**
+ * 投手のライブERAを計算する。シーズン通算 + 試合中成績を統合。
+ * シーズンデータがなく、試合データもない場合は undefined。
+ */
+export function computeLiveEra(player: LineupPlayer, gameStats?: PitcherGameStats): string | undefined {
+  const seasonIP = player.inningsPitched ? parseInningsPitched(player.inningsPitched) : 0
+  const seasonER = Number(player.earnedRuns) || 0
+  const gameIP = gameStats ? gameStats.outsRecorded / 3 : 0
+  const gameER = gameStats ? gameStats.earnedRunsAllowed : 0
+  const totalIP = seasonIP + gameIP
+  const totalER = seasonER + gameER
+  if (totalIP === 0) return player.era || undefined
+  return ((totalER * 9) / totalIP).toFixed(2)
+}
+
+/**
+ * 投手のライブWHIPを計算する。シーズン通算 + 試合中成績を統合。
+ */
+export function computeLiveWhip(player: LineupPlayer, gameStats?: PitcherGameStats): string | undefined {
+  const seasonIP = player.inningsPitched ? parseInningsPitched(player.inningsPitched) : 0
+  const seasonH = Number(player.hitsAllowed) || 0
+  const seasonBB = Number(player.walksAllowed) || 0
+  const gameIP = gameStats ? gameStats.outsRecorded / 3 : 0
+  const gameH = gameStats ? gameStats.hitsAllowed : 0
+  const gameBB = gameStats ? gameStats.walksAllowed : 0
+  const totalIP = seasonIP + gameIP
+  if (totalIP === 0) return player.whip || undefined
+  return ((seasonH + gameH + seasonBB + gameBB) / totalIP).toFixed(2)
 }
 
 /** 打者のスタッツ文字列を生成 */
@@ -240,11 +389,28 @@ export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySet
 }
 
 /** 投手のスタッツ文字列を生成 */
-export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySettings): string {
+export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySettings, gameStats?: PitcherGameStats): string {
   const s = settings ?? defaultStatDisplaySettings
   const parts: string[] = []
   if (s.showAppearances && player.appearances) parts.push(`${player.appearances}登板`)
-  if (s.showRecord && player.record) parts.push(player.record)
+  if (s.showRecord) {
+    const rec = formatPitcherRecord({ wins: player.wins, losses: player.losses })
+    if (rec) {
+      parts.push(rec)
+    } else if (player.record) {
+      parts.push(player.record)
+    }
+  }
+  if (s.showSaves && player.saves && Number(player.saves) > 0) parts.push(`${player.saves}S`)
+  if (s.showHolds && player.holds && Number(player.holds) > 0) parts.push(`${player.holds}H`)
+  if (s.showEra) {
+    const era = computeLiveEra(player, gameStats)
+    if (era) parts.push(`防御率 ${era}`)
+  }
+  if (s.showWhip) {
+    const whip = computeLiveWhip(player, gameStats)
+    if (whip) parts.push(`WHIP ${whip}`)
+  }
   return parts.join(' ')
 }
 
@@ -259,7 +425,7 @@ export const CARP_LINEUP: LineupPlayer[] = [
   { order: 7, name: '菊池 涼介', number: '33', position: '二', battingAvg: '.248', homeRuns: '5', rbi: '30', ops: '.672' },
   { order: 8, name: '上本 崇司', number: '0', position: '三', battingAvg: '.242', homeRuns: '3', rbi: '18', ops: '.655' },
   { order: 9, name: '田村 俊介', number: '38', position: 'DH', battingAvg: '.240', homeRuns: '2', rbi: '15', ops: '.638' },
-  { order: 10, name: '森下 暢仁', number: '18', position: '投', appearances: '22', record: '10勝5敗' },
+  { order: 10, name: '森下 暢仁', number: '18', position: '投', appearances: '22', record: '10勝5敗', wins: '10', losses: '5' },
 ]
 
 // デモ用: 福岡ソフトバンクホークス 2025スタメン
@@ -273,7 +439,7 @@ export const HAWKS_LINEUP: LineupPlayer[] = [
   { order: 7, name: '牧原 大成', number: '2', position: '二', battingAvg: '.278', homeRuns: '3', rbi: '20', ops: '.695' },
   { order: 8, name: '甲斐 拓也', number: '19', position: '捕', battingAvg: '.230', homeRuns: '8', rbi: '30', ops: '.640' },
   { order: 9, name: '三森 大貴', number: '0', position: '三', battingAvg: '.245', homeRuns: '4', rbi: '22', ops: '.665' },
-  { order: 10, name: '東浜 巨', number: '14', position: '投', appearances: '20', record: '8勝6敗' },
+  { order: 10, name: '東浜 巨', number: '14', position: '投', appearances: '20', record: '8勝6敗', wins: '8', losses: '6' },
 ]
 
 export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
@@ -303,6 +469,7 @@ export const initialGameState: GameState = {
   runners: { first: false, second: false, third: false },
   batter: { name: '秋山 翔吾', number: '55', stat: '.278 4本 28打点 OPS.735', statLabel: '' },
   runnerIndices: { first: null, second: null, third: null },
+  runnerResponsiblePitcher: { first: null, second: null, third: null },
   lastBatterIndex: null,
   pitcher: { name: '森下 暢仁', number: '18', stat: '10勝5敗', statLabel: '22登板' },
   awayLineup: [...CARP_LINEUP],
@@ -324,6 +491,7 @@ export const initialGameState: GameState = {
   overlayScale: 1,
   lineupDisplayTeam: 'away',
   pitcherStats: {},
+  pitcherGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
 }
 

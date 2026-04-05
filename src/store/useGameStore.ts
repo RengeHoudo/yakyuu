@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PlayerInfo, Runners, RunnerIndices, StatDisplaySettings } from '../types'
-import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS } from '../types'
+import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
+import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 
@@ -27,8 +27,8 @@ const DATA_KEYS: (keyof GameState)[] = [
   'awayBatterIndex', 'homeBatterIndex', 'playLog',
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
-  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'runnerIndices',
-  'lastBatterIndex', 'statDisplaySettings',
+  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
+  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -79,6 +79,58 @@ export function recalcBattingStats(player: LineupPlayer): Partial<LineupPlayer> 
   return { battingAvg, onBasePct, sluggingPct, ops }
 }
 
+/** 現在の投手の試合中成績を更新する */
+function updatePitcherGameStatsPatch(
+  s: GameState,
+  patch: Partial<PitcherGameStats>,
+): Partial<GameState> {
+  const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+  const key = `${defTeam}-${s.pitcher.number}`
+  const prev = s.pitcherGameStats?.[key] ?? { ...defaultPitcherGameStats }
+  const updated = { ...prev }
+  for (const [k, v] of Object.entries(patch)) {
+    ;(updated as any)[k] = ((updated as any)[k] ?? 0) + v
+  }
+  return { pitcherGameStats: { ...s.pitcherGameStats, [key]: updated } }
+}
+
+/**
+ * 責任投手ごとに失点・自責点を分配するパッチを生成する。
+ * scoredPitcherKeys の各エントリが1得点に対応し、その投手の runsAllowed/earnedRunsAllowed を+1する。
+ * currentPatch は現在の投手に加算する非得点系スタッツ (hitsAllowed, walksAllowed, outsRecorded など)。
+ */
+function distributePitcherRunsPatch(
+  s: GameState,
+  scoredPitcherKeys: string[],
+  earned: boolean,
+  currentPatch?: Partial<PitcherGameStats>,
+): Partial<GameState> {
+  const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+  const currentKey = `${defTeam}-${s.pitcher.number}`
+  const pgs = { ...s.pitcherGameStats }
+
+  // Apply currentPatch (non-run stats) to current pitcher
+  if (currentPatch) {
+    const prev = pgs[currentKey] ?? { ...defaultPitcherGameStats }
+    const updated = { ...prev }
+    for (const [k, v] of Object.entries(currentPatch)) {
+      ;(updated as any)[k] = ((updated as any)[k] ?? 0) + v
+    }
+    pgs[currentKey] = updated
+  }
+
+  // Distribute runs to responsible pitchers
+  for (const key of scoredPitcherKeys) {
+    const prev = pgs[key] ?? { ...defaultPitcherGameStats }
+    const updated = { ...prev }
+    updated.runsAllowed += 1
+    if (earned) updated.earnedRunsAllowed += 1
+    pgs[key] = updated
+  }
+
+  return { pitcherGameStats: pgs }
+}
+
 /** 現在の打者の LineupPlayer 成績を更新する */
 export function updateBatterStats(s: GameState, patch: Record<string, number>): Partial<GameState> {
   const isAway = s.currentHalf === 'top'
@@ -100,89 +152,107 @@ export function advanceRunners(
   s: GameState,
   basesForBatter: 0 | 1 | 2 | 3 | 4,
   _forceOnly: boolean,
-): { runners: Runners; runnerIndices: RunnerIndices; runsScored: number } {
+): { runners: Runners; runnerIndices: RunnerIndices; runnerResponsiblePitcher: RunnerResponsiblePitcher; runsScored: number; scoredPitcherKeys: string[] } {
   const ri = s.runnerIndices
+  const rrp = s.runnerResponsiblePitcher
   const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+  const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+  const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
   let runsScored = 0
+  const scoredPitcherKeys: string[] = []
 
   if (basesForBatter === 4) {
-    if (ri.first !== null) runsScored++
-    if (ri.second !== null) runsScored++
-    if (ri.third !== null) runsScored++
-    runsScored++ // batter
+    if (ri.first !== null) { runsScored++; scoredPitcherKeys.push(rrp.first ?? currentPitcherKey) }
+    if (ri.second !== null) { runsScored++; scoredPitcherKeys.push(rrp.second ?? currentPitcherKey) }
+    if (ri.third !== null) { runsScored++; scoredPitcherKeys.push(rrp.third ?? currentPitcherKey) }
+    runsScored++; scoredPitcherKeys.push(currentPitcherKey) // batter
     return {
       runners: { first: false, second: false, third: false },
       runnerIndices: { first: null, second: null, third: null },
-      runsScored,
+      runnerResponsiblePitcher: { first: null, second: null, third: null },
+      runsScored, scoredPitcherKeys,
     }
   }
 
   if (basesForBatter === 3) {
-    if (ri.first !== null) runsScored++
-    if (ri.second !== null) runsScored++
-    if (ri.third !== null) runsScored++
+    if (ri.first !== null) { runsScored++; scoredPitcherKeys.push(rrp.first ?? currentPitcherKey) }
+    if (ri.second !== null) { runsScored++; scoredPitcherKeys.push(rrp.second ?? currentPitcherKey) }
+    if (ri.third !== null) { runsScored++; scoredPitcherKeys.push(rrp.third ?? currentPitcherKey) }
     return {
       runners: { first: false, second: false, third: true },
       runnerIndices: { first: null, second: null, third: currentBatterIdx },
-      runsScored,
+      runnerResponsiblePitcher: { first: null, second: null, third: currentPitcherKey },
+      runsScored, scoredPitcherKeys,
     }
   }
 
   if (basesForBatter === 2) {
-    if (ri.third !== null) runsScored++
+    if (ri.third !== null) { runsScored++; scoredPitcherKeys.push(rrp.third ?? currentPitcherKey) }
     const newRI: RunnerIndices = { first: null, second: currentBatterIdx, third: null }
     const newR: Runners = { first: false, second: true, third: false }
+    const newRRP: RunnerResponsiblePitcher = { first: null, second: currentPitcherKey, third: null }
     if (ri.first !== null) {
       newRI.third = ri.first
       newR.third = true
+      newRRP.third = rrp.first ?? currentPitcherKey
       if (ri.second !== null) {
         runsScored++ // 2nd pushed home by 1st→3rd
+        scoredPitcherKeys.push(rrp.second ?? currentPitcherKey)
       }
     } else if (ri.second !== null) {
       newRI.third = ri.second
       newR.third = true
+      newRRP.third = rrp.second ?? currentPitcherKey
     }
-    return { runners: newR, runnerIndices: newRI, runsScored }
+    return { runners: newR, runnerIndices: newRI, runnerResponsiblePitcher: newRRP, runsScored, scoredPitcherKeys }
   }
 
   if (basesForBatter === 1) {
     const newRI: RunnerIndices = { first: currentBatterIdx, second: null, third: null }
     const newR: Runners = { first: true, second: false, third: false }
+    const newRRP: RunnerResponsiblePitcher = { first: currentPitcherKey, second: null, third: null }
     if (ri.first !== null) {
       newRI.second = ri.first
       newR.second = true
+      newRRP.second = rrp.first ?? currentPitcherKey
       if (ri.second !== null) {
         newRI.third = ri.second
         newR.third = true
+        newRRP.third = rrp.second ?? currentPitcherKey
         if (ri.third !== null) {
           runsScored++ // 3rd pushed home
+          scoredPitcherKeys.push(rrp.third ?? currentPitcherKey)
         }
       } else {
         if (ri.third !== null) {
           newRI.third = ri.third
           newR.third = true
+          newRRP.third = rrp.third ?? currentPitcherKey
         }
       }
     } else {
       if (ri.second !== null) {
         newRI.second = ri.second
         newR.second = true
+        newRRP.second = rrp.second ?? currentPitcherKey
       }
       if (ri.third !== null) {
         newRI.third = ri.third
         newR.third = true
+        newRRP.third = rrp.third ?? currentPitcherKey
       }
     }
-    return { runners: newR, runnerIndices: newRI, runsScored }
+    return { runners: newR, runnerIndices: newRI, runnerResponsiblePitcher: newRRP, runsScored, scoredPitcherKeys }
   }
 
   // basesForBatter === 0: 全走者を1塁ずつ進塁（犠打・WP/PB）
   const newRI: RunnerIndices = { first: null, second: null, third: null }
   const newR: Runners = { first: false, second: false, third: false }
-  if (ri.third !== null) runsScored++
-  if (ri.second !== null) { newRI.third = ri.second; newR.third = true }
-  if (ri.first !== null) { newRI.second = ri.first; newR.second = true }
-  return { runners: newR, runnerIndices: newRI, runsScored }
+  const newRRP: RunnerResponsiblePitcher = { first: null, second: null, third: null }
+  if (ri.third !== null) { runsScored++; scoredPitcherKeys.push(rrp.third ?? currentPitcherKey) }
+  if (ri.second !== null) { newRI.third = ri.second; newR.third = true; newRRP.third = rrp.second ?? currentPitcherKey }
+  if (ri.first !== null) { newRI.second = ri.first; newR.second = true; newRRP.second = rrp.first ?? currentPitcherKey }
+  return { runners: newR, runnerIndices: newRI, runnerResponsiblePitcher: newRRP, runsScored, scoredPitcherKeys }
 }
 
 /** 得点を現在のイニングに加算する */
@@ -277,6 +347,8 @@ interface GameActions {
   scoreRunnerWithRBI: (lineupIndex: number) => void
   /** H🏃‍♀️ 打点なし生還: 得点のみ */
   scoreRunnerNoRBI: (lineupIndex: number) => void
+  /** 非自責点生還: 失点+1 だが自責点には加算しない */
+  scoreRunnerUnearned: (lineupIndex: number) => void
   /** 暴投/パスボール: 全走者1塁ずつ進塁、3塁走者は打点なし生還 */
   advanceRunnersOnWildPitch: () => void
   /** オーバーレイ表示スタッツ設定を部分更新する */
@@ -301,10 +373,16 @@ export const useGameStore = create<GameStore>()(
               walks: 1,
               ...(runsScored > 0 ? { rbi: runsScored } : {}),
             })
+            const walkResult = applyWalk(s)
+            const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+            const pgsPatch = _walkScoredPitcherKey
+              ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true, { walksAllowed: 1 })
+              : updatePitcherGameStatsPatch(s, { walksAllowed: 1 })
             return {
-              ...applyWalk(s),
+              ...walkPatch,
               ...statPatch,
               ...advanceBatterPatch(s),
+              ...pgsPatch,
               pitchCount: s.pitchCount + 1,
               lastBatterIndex: currentBatterIdx,
             }
@@ -322,14 +400,15 @@ export const useGameStore = create<GameStore>()(
               atBats: 1,
               strikeouts: 1,
             })
+            const pgsPatch = updatePitcherGameStatsPatch(s, { outsRecorded: 1 })
             const outs = s.count.outs + 1
             if (outs >= 3) {
               const sWithPitch = { ...extractGameState(s), pitchCount: s.pitchCount + 1 } as GameState
-              return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
+              return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch), ...pgsPatch }
             }
             const newPitchCount = s.pitchCount + 1
             const sWithOuts = { ...extractGameState(s), count: { ...s.count, outs }, pitchCount: newPitchCount }
-            return { ...statPatch, ...advanceBatterPatch(sWithOuts), pitchCount: newPitchCount, lastBatterIndex: currentBatterIdx }
+            return { ...statPatch, ...advanceBatterPatch(sWithOuts), ...pgsPatch, pitchCount: newPitchCount, lastBatterIndex: currentBatterIdx }
           }
           return { count: { ...s.count, strikes }, pitchCount: s.pitchCount + 1 }
         }),
@@ -338,10 +417,10 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const outs = s.count.outs + 1
           if (outs >= 3) {
-            return { ...advanceBatterPatch(s), ...advanceInningPatch(s) }
+            return { ...advanceBatterPatch(s), ...advanceInningPatch(s), ...updatePitcherGameStatsPatch(s, { outsRecorded: 1 }) }
           }
           // +1ボタン: out追加のみ（打者は進めない）
-          return { count: { balls: 0, strikes: 0, outs } }
+          return { count: { balls: 0, strikes: 0, outs }, ...updatePitcherGameStatsPatch(s, { outsRecorded: 1 }) }
         }),
 
       resetCount: () =>
@@ -354,20 +433,27 @@ export const useGameStore = create<GameStore>()(
 
       setRunnerAtBase: (base, lineupIndex) =>
         set((s) => {
-          // 同じ選手が既に別の塁にいる場合は先にクリアする
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+          // 同じ選手が既に別の塁にいる場合は先にクリアし、責任投手を引き継ぐ
           const newRI = { ...s.runnerIndices }
           const newRunners = { ...s.runners }
+          const newRRP = { ...s.runnerResponsiblePitcher }
+          let existingRRP: string | null = null
           if (lineupIndex !== null) {
             for (const b of ['first', 'second', 'third'] as const) {
               if (b !== base && newRI[b] === lineupIndex) {
+                existingRRP = newRRP[b] // 元の責任投手を保持
                 newRI[b] = null
                 newRunners[b] = false
+                newRRP[b] = null
               }
             }
           }
           newRI[base] = lineupIndex
           newRunners[base] = lineupIndex !== null
-          return { runners: newRunners, runnerIndices: newRI }
+          newRRP[base] = lineupIndex !== null ? (existingRRP ?? currentPitcherKey) : null
+          return { runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP }
         }),
 
       scoreRunnerWithRBI: (lineupIndex) =>
@@ -379,13 +465,18 @@ export const useGameStore = create<GameStore>()(
           else if (ri.third === lineupIndex) base = 'third'
           if (!base) return s
 
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+          const responsibleKey = s.runnerResponsiblePitcher[base] ?? currentPitcherKey
           const scorePatch = addScoreRuns(s, 1)
           const rbiPatch = s.lastBatterIndex !== null ? addRBIToBatter(s, s.lastBatterIndex) : {}
           return {
             ...scorePatch,
             ...rbiPatch,
+            ...distributePitcherRunsPatch(s, [responsibleKey], true),
             runners: { ...s.runners, [base]: false },
             runnerIndices: { ...ri, [base]: null },
+            runnerResponsiblePitcher: { ...s.runnerResponsiblePitcher, [base]: null },
           }
         }),
 
@@ -398,20 +489,48 @@ export const useGameStore = create<GameStore>()(
           else if (ri.third === lineupIndex) base = 'third'
           if (!base) return s
 
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+          const responsibleKey = s.runnerResponsiblePitcher[base] ?? currentPitcherKey
           return {
             ...addScoreRuns(s, 1),
+            ...distributePitcherRunsPatch(s, [responsibleKey], true),
             runners: { ...s.runners, [base]: false },
             runnerIndices: { ...ri, [base]: null },
+            runnerResponsiblePitcher: { ...s.runnerResponsiblePitcher, [base]: null },
+          }
+        }),
+
+      scoreRunnerUnearned: (lineupIndex) =>
+        set((s) => {
+          const ri = s.runnerIndices
+          let base: keyof RunnerIndices | null = null
+          if (ri.first === lineupIndex) base = 'first'
+          else if (ri.second === lineupIndex) base = 'second'
+          else if (ri.third === lineupIndex) base = 'third'
+          if (!base) return s
+
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+          const responsibleKey = s.runnerResponsiblePitcher[base] ?? currentPitcherKey
+          return {
+            ...addScoreRuns(s, 1),
+            ...distributePitcherRunsPatch(s, [responsibleKey], false),
+            runners: { ...s.runners, [base]: false },
+            runnerIndices: { ...ri, [base]: null },
+            runnerResponsiblePitcher: { ...s.runnerResponsiblePitcher, [base]: null },
           }
         }),
 
       advanceRunnersOnWildPitch: () =>
         set((s) => {
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 0, false)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 0, false)
           return {
             runners,
             runnerIndices,
+            runnerResponsiblePitcher,
             ...addScoreRuns(s, runsScored),
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, true) : {}),
           }
         }),
 
@@ -478,7 +597,7 @@ export const useGameStore = create<GameStore>()(
       recordSingle: () =>
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 1, true)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 1, true)
           const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
           const hitsPatch = attackTeam === 'away'
             ? { awayHits: s.awayHits + 1 }
@@ -491,7 +610,8 @@ export const useGameStore = create<GameStore>()(
             ...hitsPatch,
             ...statPatch,
             ...addScoreRuns(s, runsScored),
-            runners, runnerIndices,
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, true, { hitsAllowed: 1 }) : updatePitcherGameStatsPatch(s, { hitsAllowed: 1 })),
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
@@ -501,7 +621,7 @@ export const useGameStore = create<GameStore>()(
       recordDouble: () =>
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 2, false)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 2, false)
           const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
           const hitsPatch = attackTeam === 'away'
             ? { awayHits: s.awayHits + 1 }
@@ -514,7 +634,8 @@ export const useGameStore = create<GameStore>()(
             ...hitsPatch,
             ...statPatch,
             ...addScoreRuns(s, runsScored),
-            runners, runnerIndices,
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, true, { hitsAllowed: 1 }) : updatePitcherGameStatsPatch(s, { hitsAllowed: 1 })),
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
@@ -524,7 +645,7 @@ export const useGameStore = create<GameStore>()(
       recordTriple: () =>
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 3, false)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 3, false)
           const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
           const hitsPatch = attackTeam === 'away'
             ? { awayHits: s.awayHits + 1 }
@@ -537,7 +658,8 @@ export const useGameStore = create<GameStore>()(
             ...hitsPatch,
             ...statPatch,
             ...addScoreRuns(s, runsScored),
-            runners, runnerIndices,
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, true, { hitsAllowed: 1 }) : updatePitcherGameStatsPatch(s, { hitsAllowed: 1 })),
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
@@ -553,10 +675,16 @@ export const useGameStore = create<GameStore>()(
             hitByPitch: 1,
             ...(runsScored > 0 ? { rbi: runsScored } : {}),
           })
+          const walkResult = applyWalk(s)
+          const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+          const pgsPatch = _walkScoredPitcherKey
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true)
+            : {}
           return {
-            ...applyWalk(s),
+            ...walkPatch,
             ...statPatch,
             ...advanceBatterPatch(s),
+            ...pgsPatch,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
           }
@@ -565,7 +693,7 @@ export const useGameStore = create<GameStore>()(
       recordHomeRun: () =>
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 4, false)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 4, false)
           const attackTeam = s.currentHalf === 'top' ? 'away' : 'home'
           const hitsPatch = attackTeam === 'away'
             ? { awayHits: s.awayHits + 1 }
@@ -577,7 +705,8 @@ export const useGameStore = create<GameStore>()(
             ...hitsPatch,
             ...statPatch,
             ...addScoreRuns(s, runsScored),
-            runners, runnerIndices,
+            ...distributePitcherRunsPatch(s, scoredPitcherKeys, true, { hitsAllowed: 1 }),
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
@@ -593,10 +722,16 @@ export const useGameStore = create<GameStore>()(
             walks: 1,
             ...(runsScored > 0 ? { rbi: runsScored } : {}),
           })
+          const walkResult = applyWalk(s)
+          const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+          const pgsPatch = _walkScoredPitcherKey
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true, { walksAllowed: 1 })
+            : updatePitcherGameStatsPatch(s, { walksAllowed: 1 })
           return {
-            ...applyWalk(s),
+            ...walkPatch,
             ...statPatch,
             ...advanceBatterPatch(s),
+            ...pgsPatch,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
           }
@@ -612,10 +747,16 @@ export const useGameStore = create<GameStore>()(
             intentionalWalks: 1,
             ...(runsScored > 0 ? { rbi: runsScored } : {}),
           })
+          const walkResult = applyWalk(s)
+          const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+          const pgsPatch = _walkScoredPitcherKey
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true, { walksAllowed: 1 })
+            : updatePitcherGameStatsPatch(s, { walksAllowed: 1 })
           return {
-            ...applyWalk(s),
+            ...walkPatch,
             ...statPatch,
             ...advanceBatterPatch(s),
+            ...pgsPatch,
             lastBatterIndex: currentBatterIdx,
             // 故意四球は投球数を加算しない
           }
@@ -630,12 +771,15 @@ export const useGameStore = create<GameStore>()(
           // 先頭走者を除去
           const newRunners = { ...s.runners }
           const newRI = { ...s.runnerIndices }
+          const newRRP = { ...s.runnerResponsiblePitcher }
           if (newRI.first !== null) {
             newRI.first = null
             newRunners.first = false
+            newRRP.first = null
           } else if (newRI.second !== null) {
             newRI.second = null
             newRunners.second = false
+            newRRP.second = null
           }
           const statPatch = updateBatterStats(s, {
             plateAppearances: 1, atBats: 1, groundedIntoDoublePlays: 1,
@@ -645,14 +789,16 @@ export const useGameStore = create<GameStore>()(
             ...extractGameState(s),
             runners: newRunners,
             runnerIndices: newRI,
+            runnerResponsiblePitcher: newRRP,
             pitchCount: s.pitchCount + 1,
           }
           if (newOuts >= 3) {
             return {
               ...statPatch,
-              runners: newRunners, runnerIndices: newRI,
+              runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP,
               ...advanceBatterPatch(s),
               ...advanceInningPatch(sWithPitch),
+              ...updatePitcherGameStatsPatch(s, { outsRecorded: 2 }),
             }
           }
           const sWithOuts: GameState = {
@@ -661,8 +807,9 @@ export const useGameStore = create<GameStore>()(
           }
           return {
             ...statPatch,
-            runners: newRunners, runnerIndices: newRI,
+            runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP,
             ...advanceBatterPatch(sWithOuts),
+            ...updatePitcherGameStatsPatch(s, { outsRecorded: 2 }),
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
           }
@@ -677,21 +824,24 @@ export const useGameStore = create<GameStore>()(
             ...extractGameState(s),
             runners: { first: false, second: false, third: false },
             runnerIndices: { first: null, second: null, third: null },
+            runnerResponsiblePitcher: { first: null, second: null, third: null },
             pitchCount: s.pitchCount + 1,
           }
           return {
             ...statPatch,
             runners: { first: false, second: false, third: false },
             runnerIndices: { first: null, second: null, third: null },
+            runnerResponsiblePitcher: { first: null, second: null, third: null },
             ...advanceBatterPatch(s),
             ...advanceInningPatch(sWithPitch),
+            ...updatePitcherGameStatsPatch(s, { outsRecorded: 3 }),
           }
         }),
 
       recordSacrificeBunt: () =>
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 0, false)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 0, false)
           const statPatch = updateBatterStats(s, {
             plateAppearances: 1,
             sacrificeHits: 1,
@@ -699,17 +849,21 @@ export const useGameStore = create<GameStore>()(
           })
           const newOuts = s.count.outs + 1
           const scorePatch = addScoreRuns(s, runsScored)
+          const pgsPatch = runsScored > 0
+            ? distributePitcherRunsPatch(s, scoredPitcherKeys, true, { outsRecorded: 1 })
+            : updatePitcherGameStatsPatch(s, { outsRecorded: 1 })
           const sWithPitch: GameState = {
             ...extractGameState(s),
-            runners, runnerIndices,
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
           }
           if (newOuts >= 3) {
             return {
               ...statPatch, ...scorePatch,
-              runners, runnerIndices,
+              runners, runnerIndices, runnerResponsiblePitcher,
               ...advanceBatterPatch(s),
               ...advanceInningPatch(sWithPitch),
+              ...pgsPatch,
             }
           }
           const sWithOuts: GameState = {
@@ -718,8 +872,9 @@ export const useGameStore = create<GameStore>()(
           }
           return {
             ...statPatch, ...scorePatch,
-            runners, runnerIndices,
+            runners, runnerIndices, runnerResponsiblePitcher,
             ...advanceBatterPatch(sWithOuts),
+            ...pgsPatch,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
           }
@@ -731,7 +886,11 @@ export const useGameStore = create<GameStore>()(
           // 3塁走者必須 → 生還
           const newRunners = { ...s.runners, third: false }
           const newRI = { ...s.runnerIndices, third: null }
+          const newRRP = { ...s.runnerResponsiblePitcher, third: null }
           const runsScored = s.runners.third ? 1 : 0
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+          const responsibleKey = s.runnerResponsiblePitcher.third ?? currentPitcherKey
           const statPatch = updateBatterStats(s, {
             plateAppearances: 1,
             sacrificeFlies: 1,
@@ -739,17 +898,21 @@ export const useGameStore = create<GameStore>()(
           })
           const newOuts = s.count.outs + 1
           const scorePatch = addScoreRuns(s, runsScored)
+          const pgsPatch = runsScored > 0
+            ? distributePitcherRunsPatch(s, [responsibleKey], true, { outsRecorded: 1 })
+            : updatePitcherGameStatsPatch(s, { outsRecorded: 1 })
           const sWithPitch: GameState = {
             ...extractGameState(s),
-            runners: newRunners, runnerIndices: newRI,
+            runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP,
             pitchCount: s.pitchCount + 1,
           }
           if (newOuts >= 3) {
             return {
               ...statPatch, ...scorePatch,
-              runners: newRunners, runnerIndices: newRI,
+              runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP,
               ...advanceBatterPatch(s),
               ...advanceInningPatch(sWithPitch),
+              ...pgsPatch,
             }
           }
           const sWithOuts: GameState = {
@@ -758,8 +921,9 @@ export const useGameStore = create<GameStore>()(
           }
           return {
             ...statPatch, ...scorePatch,
-            runners: newRunners, runnerIndices: newRI,
+            runners: newRunners, runnerIndices: newRI, runnerResponsiblePitcher: newRRP,
             ...advanceBatterPatch(sWithOuts),
+            ...pgsPatch,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
           }
@@ -769,14 +933,15 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
           // 振り逃げ: 打者→1塁、フォース押し出し（2アウト時のみ1塁走者あり可）
-          const { runners, runnerIndices, runsScored } = advanceRunners(s, 1, true)
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 1, true)
           const statPatch = updateBatterStats(s, {
             plateAppearances: 1, atBats: 1, strikeouts: 1,
           })
           return {
             ...statPatch,
             ...addScoreRuns(s, runsScored),
-            runners, runnerIndices,
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, true) : {}),
+            runners, runnerIndices, runnerResponsiblePitcher,
             pitchCount: s.pitchCount + 1,
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
@@ -975,6 +1140,7 @@ export const useGameStore = create<GameStore>()(
             count: { balls: 0, strikes: 0, outs: 0 },
             runners: { first: false, second: false, third: false },
             runnerIndices: { first: null, second: null, third: null },
+            runnerResponsiblePitcher: { first: null, second: null, third: null } as RunnerResponsiblePitcher,
           }
           if (s.currentHalf === 'bottom') {
             return { ...clearRunners, currentHalf: 'top' as const }
@@ -1092,13 +1258,14 @@ function applyOutPlay(s: GameState, outsToAdd: number): Partial<GameState> {
     plateAppearances: 1,
     atBats: 1,
   })
+  const pgsPatch = updatePitcherGameStatsPatch(s, { outsRecorded: outsToAdd })
   const newOuts = s.count.outs + outsToAdd
   const sWithPitch: GameState = { ...extractGameState(s), pitchCount: s.pitchCount + 1 }
   if (newOuts >= 3) {
-    return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch) }
+    return { ...statPatch, ...advanceBatterPatch(s), ...advanceInningPatch(sWithPitch), ...pgsPatch }
   }
   const sWithOuts: GameState = { ...extractGameState(s), count: { ...s.count, outs: newOuts } }
-  return { ...statPatch, ...advanceBatterPatch(sWithOuts), pitchCount: s.pitchCount + 1, lastBatterIndex: currentBatterIdx }
+  return { ...statPatch, ...advanceBatterPatch(sWithOuts), ...pgsPatch, pitchCount: s.pitchCount + 1, lastBatterIndex: currentBatterIdx }
 }
 
 /** 打者交代: 次の打者をセットし B/S カウントをリセット（アウト数は維持） */
@@ -1126,33 +1293,48 @@ function advanceBatterPatch(s: GameState): Partial<GameState> {
 }
 
 /** 四球・死球: 打者→一塁、フォースで走者押し出し、満塁なら得点 */
-function applyWalk(s: GameState): Partial<GameState> {
+function applyWalk(s: GameState): Partial<GameState> & { _walkScoredPitcherKey?: string } {
   const { first, second, third } = s.runners
   const newRunners = { first: true, second, third }
   let runsScored = 0
 
+  const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+  const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+
   // runnerIndices も押し出し路理で更新
   const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
   const ri = s.runnerIndices ?? { first: null, second: null, third: null }
+  const rrp = s.runnerResponsiblePitcher ?? { first: null, second: null, third: null }
   const newRI = { ...ri, first: currentBatterIdx }
+  const newRRP = { ...rrp, first: currentPitcherKey }
+
+  let walkScoredPitcherKey: string | undefined
 
   if (first) {
     newRunners.second = true
     newRI.second = ri.first
+    newRRP.second = rrp.first ?? currentPitcherKey
     if (second) {
       newRunners.third = true
       newRI.third = ri.second
+      newRRP.third = rrp.second ?? currentPitcherKey
       if (third) {
         // 満塁押し出し — 三塁走者が生還（ri.third は得点したので newRI には引き継がれない）
         runsScored = 1
+        walkScoredPitcherKey = rrp.third ?? currentPitcherKey
       }
     }
   }
 
-  const patch: Partial<GameState> = {
+  const patch: Partial<GameState> & { _walkScoredPitcherKey?: string } = {
     count: { ...s.count, balls: 0, strikes: 0 },
     runners: newRunners,
     runnerIndices: newRI,
+    runnerResponsiblePitcher: newRRP,
+  }
+
+  if (walkScoredPitcherKey) {
+    patch._walkScoredPitcherKey = walkScoredPitcherKey
   }
 
   if (runsScored > 0) {
@@ -1232,6 +1414,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
     count: { balls: 0, strikes: 0, outs: 0 },
     runners: { first: false, second: false, third: false },
     runnerIndices: { first: null, second: null, third: null },
+    runnerResponsiblePitcher: { first: null, second: null, third: null },
     lastBatterIndex: null,
     pitchCount: restoredPitchCount,
     pitcherStats,

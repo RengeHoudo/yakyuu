@@ -482,3 +482,216 @@ describe('fetchNpbRoster – stats 統合', () => {
 function parseNbRosterHtml(html: string, keyword: string) {
   return parseNpbRosterHtml(html, keyword)
 }
+
+// ─────────────────────────────────────────────
+// parseNpbPitchingHtml — 全24列対応 (F1 + B2)
+// ─────────────────────────────────────────────
+
+// 列: 選手, 登板, 勝利, 敗北, セーブ, ホールド, ＨＰ, 完投, 完封勝, 無四球, 勝率,
+//     打者, 投球回, 安打, 本塁打, 四球, 故意四, 死球, 三振, 暴投, ボーク, 失点, 自責点, 防御率
+type FullPitchingRow = [
+  string, string, string, string, string, string, string, string, string, string, string, string,
+  string, string, string, string, string, string, string, string, string, string, string, string,
+]
+function makeFullPitchingHtml(rows: FullPitchingRow[]): string {
+  const headers = ['選手', '登板', '勝利', '敗北', 'セーブ', 'ホールド', 'ＨＰ', '完投', '完封勝', '無四球', '勝率',
+    '打者', '投球回', '安打', '本塁打', '四球', '故意四', '死球', '三振', '暴投', 'ボーク', '失点', '自責点', '防御率']
+  const ths = headers.map((h) => `<th>${h}</th>`).join('')
+  const trs = rows.map((row) =>
+    `<tr>${row.map((v) => `<td>${v}</td>`).join('')}</tr>`,
+  ).join('\n')
+  return `<html><body>
+    <table>
+      <thead><tr>${ths}</tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+  </body></html>`
+}
+
+describe('parseNpbPitchingHtml \u2013 \u516824\u5217\u5bfe\u5fdc (F1)', () => {
+  const sampleRow: FullPitchingRow = [
+    '森下 暢仁', '22', '10', '4', '1', '2', '3', '5', '2', '1', '.714',
+    '550', '142.1', '130', '8', '35', '5', '4', '120', '2', '0', '40', '35', '2.21',
+  ]
+
+  it('全24列を正しく抽出する', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const map = parseNpbPitchingHtml(html)
+    const stats = map.get('森下暢仁')
+    expect(stats).toBeDefined()
+    expect(stats?.appearances).toBe('22')
+    expect(stats?.wins).toBe('10')
+    expect(stats?.losses).toBe('4')
+    expect(stats?.saves).toBe('1')
+    expect(stats?.holds).toBe('2')
+    expect(stats?.holdPoints).toBe('3')
+    expect(stats?.completeGames).toBe('5')
+    expect(stats?.shutouts).toBe('2')
+    expect(stats?.noWalkGames).toBe('1')
+    expect(stats?.winPct).toBe('.714')
+    expect(stats?.battersFaced).toBe('550')
+    expect(stats?.inningsPitched).toBe('142.1')
+    expect(stats?.hitsAllowed).toBe('130')
+    expect(stats?.homeRunsAllowed).toBe('8')
+    expect(stats?.walksAllowed).toBe('35')
+    expect(stats?.intentionalWalksAllowed).toBe('5')
+    expect(stats?.hitByPitchAllowed).toBe('4')
+    expect(stats?.strikeoutsThrown).toBe('120')
+    expect(stats?.wildPitches).toBe('2')
+    expect(stats?.balks).toBe('0')
+    expect(stats?.runsAllowed).toBe('40')
+    expect(stats?.earnedRuns).toBe('35')
+    expect(stats?.era).toBe('2.21')
+  })
+
+  it('wins/losses が個別に取得される', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    expect(stats?.wins).toBe('10')
+    expect(stats?.losses).toBe('4')
+  })
+
+  it('saves/holds/holdPoints が取得される', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    expect(stats?.saves).toBe('1')
+    expect(stats?.holds).toBe('2')
+    expect(stats?.holdPoints).toBe('3')
+  })
+
+  it('era が直接取得される', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    expect(stats?.era).toBe('2.21')
+  })
+
+  it('whip が計算される: (hitsAllowed + walksAllowed) / parseInningsPitched(inningsPitched)', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    // (130 + 35) / (142 + 1/3) = 165 / 142.333 ≒ 1.16
+    expect(stats?.whip).toBeDefined()
+    const whip = parseFloat(stats!.whip!)
+    expect(whip).toBeCloseTo((130 + 35) / (142 + 1 / 3), 1)
+  })
+
+  it('record が後方互換で生成される: "10勝4敗" 形式', () => {
+    const html = makeFullPitchingHtml([sampleRow])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    expect(stats?.record).toBe('10勝4敗')
+  })
+
+  it('投球回が <span> 分割でも textContent で結合される', () => {
+    const html = `<html><body>
+      <table>
+        <thead><tr><th>選手</th><th>登板</th><th>勝利</th><th>敗北</th><th>セーブ</th><th>ホールド</th><th>ＨＰ</th><th>完投</th><th>完封勝</th><th>無四球</th><th>勝率</th><th>打者</th><th>投球回</th><th>安打</th><th>本塁打</th><th>四球</th><th>故意四</th><th>死球</th><th>三振</th><th>暴投</th><th>ボーク</th><th>失点</th><th>自責点</th><th>防御率</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>辻 大雅</td><td>30</td><td>3</td><td>2</td><td>5</td><td>20</td><td>25</td><td>0</td><td>0</td><td>0</td><td>.600</td><td>150</td>
+            <td><span class="integer">3</span><span class="decimal">.2</span></td>
+            <td>10</td><td>1</td><td>5</td><td>0</td><td>1</td><td>8</td><td>0</td><td>0</td><td>3</td><td>3</td><td>2.45</td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>`
+    const map = parseNpbPitchingHtml(html)
+    const stats = map.get('辻大雅')
+    expect(stats?.inningsPitched).toBe('3.2')
+    // WHIP: (10 + 5) / (3 + 2/3) ≒ 4.09
+    expect(stats?.whip).toBeDefined()
+    const whip = parseFloat(stats!.whip!)
+    expect(whip).toBeCloseTo(15 / (3 + 2 / 3), 1)
+  })
+
+  it('左投げマーカー <sup>*</sup> 付き選手名 (B2)', () => {
+    const html = `<html><body>
+      <table>
+        <thead><tr><th>選手</th><th>登板</th><th>勝利</th><th>敗北</th><th>セーブ</th><th>ホールド</th><th>ＨＰ</th><th>完投</th><th>完封勝</th><th>無四球</th><th>勝率</th><th>打者</th><th>投球回</th><th>安打</th><th>本塁打</th><th>四球</th><th>故意四</th><th>死球</th><th>三振</th><th>暴投</th><th>ボーク</th><th>失点</th><th>自責点</th><th>防御率</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><sup>*</sup>辻 大雅</td><td>30</td><td>3</td><td>2</td><td>5</td><td>20</td><td>25</td><td>0</td><td>0</td><td>0</td><td>.600</td><td>150</td>
+            <td>36.0</td><td>30</td><td>2</td><td>12</td><td>1</td><td>2</td><td>35</td><td>1</td><td>0</td><td>14</td><td>12</td><td>3.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>`
+    const map = parseNpbPitchingHtml(html)
+    expect(map.has('辻大雅')).toBe(true)
+    expect(map.get('辻大雅')?.wins).toBe('3')
+  })
+
+  it('全角 ＊ 付き選手名も正しくパースされる (B2)', () => {
+    const html = makeFullPitchingHtml([
+      ['＊森下 暢仁', '22', '10', '4', '0', '0', '0', '5', '2', '1', '.714',
+       '550', '142.0', '130', '8', '35', '5', '4', '120', '2', '0', '40', '35', '2.21'],
+    ])
+    const map = parseNpbPitchingHtml(html)
+    expect(map.has('森下暢仁')).toBe(true)
+  })
+
+  it('ダッシュ値 - のフィールドは undefined', () => {
+    const html = makeFullPitchingHtml([
+      ['大瀬良 大地', '1', '-', '-', '-', '-', '-', '0', '0', '0', '-',
+       '5', '1.0', '-', '0', '-', '0', '0', '2', '0', '0', '0', '0', '0.00'],
+    ])
+    const map = parseNpbPitchingHtml(html)
+    const stats = map.get('大瀬良大地')
+    expect(stats?.wins).toBeUndefined()
+    expect(stats?.losses).toBeUndefined()
+    expect(stats?.saves).toBeUndefined()
+  })
+
+  it('投球回 0.0 の投手は whip が算出されない（0除算回避）', () => {
+    const html = makeFullPitchingHtml([
+      ['新人 投手', '1', '0', '0', '0', '0', '0', '0', '0', '0', '-',
+       '3', '0.0', '2', '0', '1', '0', '0', '1', '0', '0', '2', '2', '99.00'],
+    ])
+    const map = parseNpbPitchingHtml(html)
+    const stats = map.get('新人投手')
+    expect(stats?.whip).toBeUndefined()
+  })
+
+  it('複数投手を正しく抽出（先発・中継ぎ・抑え混在）', () => {
+    const html = makeFullPitchingHtml([
+      ['森下 暢仁', '22', '10', '4', '0', '0', '0', '5', '2', '1', '.714',
+       '550', '142.1', '130', '8', '35', '5', '4', '120', '2', '0', '40', '35', '2.21'],
+      ['辻 大雅', '60', '3', '2', '20', '0', '23', '0', '0', '0', '.600',
+       '220', '60.0', '50', '3', '20', '2', '3', '55', '2', '0', '20', '18', '2.70'],
+      ['栗林 良吏', '55', '2', '3', '37', '1', '3', '0', '0', '0', '.400',
+       '210', '55.1', '45', '4', '15', '1', '2', '65', '1', '0', '16', '14', '2.28'],
+    ])
+    const map = parseNpbPitchingHtml(html)
+    expect(map.size).toBe(3)
+    expect(map.get('森下暢仁')?.wins).toBe('10')
+    expect(map.get('辻大雅')?.saves).toBe('20')
+    expect(map.get('栗林良吏')?.saves).toBe('37')
+  })
+})
+
+// ─────────────────────────────────────────────
+// fetchNpbStats — 投手成績の全フィールドマージ
+// ─────────────────────────────────────────────
+
+describe('fetchNpbStats \u2013 \u6295\u624b\u5168\u30d5\u30a3\u30fc\u30eb\u30c9\u30de\u30fc\u30b8', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('投手に全成績フィールドがマージされる', async () => {
+    const pitcherPlayer: RosterPlayer = { positionCategory: '投手', number: '18', name: '森下 暢仁' }
+    const battingHtml = makeBattingHtml([])
+    const pitchingHtml = makeFullPitchingHtml([[
+      '森下 暢仁', '22', '10', '4', '1', '2', '3', '5', '2', '1', '.714',
+      '550', '142.1', '130', '8', '35', '5', '4', '120', '2', '0', '40', '35', '2.21',
+    ]])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => battingHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => pitchingHtml } as Response)
+
+    const result = await fetchNpbStats('広島', [pitcherPlayer])
+    expect(result[0]?.wins).toBe('10')
+    expect(result[0]?.losses).toBe('4')
+    expect(result[0]?.saves).toBe('1')
+    expect(result[0]?.holds).toBe('2')
+    expect(result[0]?.era).toBe('2.21')
+    expect(result[0]?.whip).toBeDefined()
+  })
+})

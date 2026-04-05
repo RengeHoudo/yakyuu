@@ -1,5 +1,6 @@
 import { useGameStore } from '../../store/useGameStore'
 import { formatBatterStat, formatPitcherStat } from '../../types'
+import type { PitcherGameStats } from '../../types'
 
 export default function PlayerInfo() {
   const batter = useGameStore((s) => s.batter)
@@ -11,6 +12,7 @@ export default function PlayerInfo() {
   const awayLineup = useGameStore((s) => s.awayLineup)
   const homeLineup = useGameStore((s) => s.homeLineup)
   const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
+  const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
 
   // 現在攻撃中チームのラインナップから打者スタッツを動的計算
   const attackingLineup = currentHalf === 'top' ? awayLineup : homeLineup
@@ -23,8 +25,11 @@ export default function PlayerInfo() {
   // 守備チームのラインナップから投手スタッツを動的計算
   const defendingLineup = currentHalf === 'top' ? homeLineup : awayLineup
   const pitcherLineupPlayer = defendingLineup[9]
+  const defTeam = currentHalf === 'top' ? 'home' : 'away'
+  const pitcherKey = `${defTeam}-${pitcher.number}`
+  const currentGameStats: PitcherGameStats | undefined = pitcherGameStats[pitcherKey]
   const pitcherStat = (pitcherLineupPlayer && pitcherLineupPlayer.name === pitcher.name)
-    ? formatPitcherStat(pitcherLineupPlayer, statDisplaySettings)
+    ? formatPitcherStat(pitcherLineupPlayer, statDisplaySettings, currentGameStats)
     : [statDisplaySettings.showAppearances ? pitcher.statLabel : '', statDisplaySettings.showRecord ? pitcher.stat : ''].filter(Boolean).join(' ')
 
   const hasBatter = batter.name.length > 0

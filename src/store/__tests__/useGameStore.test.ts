@@ -2963,3 +2963,410 @@ describe('lastBatterIndex 管理', () => {
     expect(s().lastBatterIndex).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────
+// StatDisplaySettings 新規フィールド (F5)
+// ─────────────────────────────────────────────
+
+describe('statDisplaySettings \u2013 \u65b0\u898f\u30d5\u30a3\u30fc\u30eb\u30c9\u521d\u671f\u5024 (F5)', () => {
+  it('showSaves がデフォルト false', () => {
+    expect(s().statDisplaySettings.showSaves).toBe(false)
+  })
+
+  it('showHolds がデフォルト false', () => {
+    expect(s().statDisplaySettings.showHolds).toBe(false)
+  })
+
+  it('showEra がデフォルト false', () => {
+    expect(s().statDisplaySettings.showEra).toBe(false)
+  })
+
+  it('showWhip がデフォルト false', () => {
+    expect(s().statDisplaySettings.showWhip).toBe(false)
+  })
+})
+
+describe('setStatDisplaySettings \u2013 \u62e1\u5f35\u30d5\u30a3\u30fc\u30eb\u30c9', () => {
+  it('showEra を true に変更できる', () => {
+    s().setStatDisplaySettings({ showEra: true })
+    expect(s().statDisplaySettings.showEra).toBe(true)
+  })
+
+  it('showWhip を true に変更できる', () => {
+    s().setStatDisplaySettings({ showWhip: true })
+    expect(s().statDisplaySettings.showWhip).toBe(true)
+  })
+
+  it('部分更新で既存フィールドに影響しない', () => {
+    s().setStatDisplaySettings({ showEra: true })
+    expect(s().statDisplaySettings.showBattingAvg).toBe(true)
+    expect(s().statDisplaySettings.showRecord).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// pitcherGameStats — ライブERA/WHIPトラッキング
+// ─────────────────────────────────────────────
+
+describe('pitcherGameStats トラッキング', () => {
+  const getPGS = (team: string, number: string) => s().pitcherGameStats[`${team}-${number}`]
+
+  it('初期状態では空オブジェクト', () => {
+    expect(s().pitcherGameStats).toEqual({})
+  })
+
+  it('recordSingle で hitsAllowed +1', () => {
+    s().recordSingle()
+    const pgs = getPGS('home', '18')
+    expect(pgs).toBeDefined()
+    expect(pgs!.hitsAllowed).toBe(1)
+  })
+
+  it('recordDouble で hitsAllowed +1', () => {
+    s().recordDouble()
+    expect(getPGS('home', '18')!.hitsAllowed).toBe(1)
+  })
+
+  it('recordHomeRun で hitsAllowed +1, runsAllowed にバッター+走者分', () => {
+    // ソロホームラン (走者なし)
+    s().recordHomeRun()
+    const pgs = getPGS('home', '18')!
+    expect(pgs.hitsAllowed).toBe(1)
+    expect(pgs.runsAllowed).toBe(1)
+    expect(pgs.earnedRunsAllowed).toBe(1)
+  })
+
+  it('recordWalk で walksAllowed +1', () => {
+    s().recordWalk()
+    const pgs = getPGS('home', '18')!
+    expect(pgs.walksAllowed).toBe(1)
+  })
+
+  it('recordHitByPitch は walksAllowed に加算しない', () => {
+    s().recordHitByPitch()
+    const pgs = getPGS('home', '18')
+    // HBP は WHIP のカウントに含まれない
+    expect(pgs?.walksAllowed ?? 0).toBe(0)
+  })
+
+  it('addStrike 三振で outsRecorded +1', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 } })
+    s().addStrike()
+    expect(getPGS('home', '18')!.outsRecorded).toBe(1)
+  })
+
+  it('recordGroundout で outsRecorded +1', () => {
+    s().recordGroundout()
+    expect(getPGS('home', '18')!.outsRecorded).toBe(1)
+  })
+
+  it('recordDoublePlay で outsRecorded +2', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false }, runnerIndices: { first: 0, second: null, third: null } })
+    s().recordDoublePlay()
+    expect(getPGS('home', '18')!.outsRecorded).toBe(2)
+  })
+
+  it('scoreRunnerWithRBI で runsAllowed +1, earnedRunsAllowed +1', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+      lastBatterIndex: 0,
+    })
+    s().scoreRunnerWithRBI(3)
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+  })
+
+  it('scoreRunnerNoRBI で runsAllowed +1, earnedRunsAllowed +1', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+    })
+    s().scoreRunnerNoRBI(3)
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+  })
+
+  it('scoreRunnerUnearned で runsAllowed +1, earnedRunsAllowed は加算されない', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+    })
+    s().scoreRunnerUnearned(3)
+    const pgs = getPGS('home', '18')!
+    expect(pgs.runsAllowed).toBe(1)
+    expect(pgs.earnedRunsAllowed).toBe(0)
+  })
+
+  it('累積カウント: ヒット2本 + 四球1 + アウト3 で正しく集計', () => {
+    s().recordSingle()
+    s().recordSingle()
+    s().recordWalk()
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 } })
+    s().addStrike()  // strikeout
+    s().recordGroundout()
+    s().recordFlyout()
+    const pgs = getPGS('home', '18')!
+    expect(pgs.hitsAllowed).toBe(2)
+    expect(pgs.walksAllowed).toBe(1)
+    expect(pgs.outsRecorded).toBe(3)
+  })
+
+  it('満塁ホームランで runsAllowed +4, earnedRunsAllowed +4', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 1, second: 2, third: 3 },
+    })
+    s().recordHomeRun()
+    expect(getPGS('home', '18')!.runsAllowed).toBe(4)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(4)
+  })
+})
+
+// ─────────────────────────────────────────────
+// 継投時の投手責任トラッキング (runnerResponsiblePitcher)
+// ─────────────────────────────────────────────
+
+describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
+  const getPGS = (team: string, number: string) => s().pitcherGameStats[`${team}-${number}`]
+
+  /**
+   * ユーザー報告シナリオ:
+   * 先発投手(#18)が満塁で降板 → 救援投手(#22)が二塁打を2本打たれる
+   * 最初の3走者の得点は先発投手(#18)の自責点、救援投手自身の走者分のみ救援投手(#22)の自責点
+   */
+  it('満塁で投手交代 → 二塁打2本: 継承走者の得点は前の投手に記録される', () => {
+    // 先発投手 #18 が満塁を作った状態
+    useGameStore.setState({
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 1, second: 2, third: 3 },
+      runnerResponsiblePitcher: { first: 'home-18', second: 'home-18', third: 'home-18' },
+    })
+
+    // 投手交代: #18 → #22
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    // 救援投手 #22 が二塁打を打たれる（3塁走者と2塁走者が生還、1塁走者は3塁へ）
+    s().recordDouble()
+
+    // 先発投手 #18: 生還した2走者分の自責点
+    expect(getPGS('home', '18')!.runsAllowed).toBe(2)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(2)
+    // 救援投手 #22: ヒット1のみ、失点なし
+    expect(getPGS('home', '22')!.hitsAllowed).toBe(1)
+    expect(getPGS('home', '22')!.runsAllowed).toBe(0)
+
+    // 2本目の二塁打（3塁に元1塁走者=#18責任、2塁に前打者=#22責任）
+    s().recordDouble()
+
+    // 先発投手 #18: さらに1人(元1塁走者)が生還 → 計3失点
+    expect(getPGS('home', '18')!.runsAllowed).toBe(3)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(3)
+    // 救援投手 #22: 前の打者(自分の走者)が2塁→押し出し生還はしない（2塁→3塁へ移動のみ)
+    // ヒット2、失点0
+    expect(getPGS('home', '22')!.hitsAllowed).toBe(2)
+    expect(getPGS('home', '22')!.runsAllowed).toBe(0)
+  })
+
+  it('継承走者がscoreRunnerWithRBIで生還: 前の投手に自責点', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+      runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
+      lastBatterIndex: 0,
+    })
+    // 投手交代
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    s().scoreRunnerWithRBI(3)
+
+    // 先発投手に自責点
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+    // 救援投手には失点なし
+    expect(getPGS('home', '22')?.runsAllowed ?? 0).toBe(0)
+  })
+
+  it('継承走者がscoreRunnerUnearnedで生還: 前の投手に失点(非自責)', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+      runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
+    })
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    s().scoreRunnerUnearned(3)
+
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(0) // 非自責
+    expect(getPGS('home', '22')?.runsAllowed ?? 0).toBe(0)
+  })
+
+  it('救援投手自身が出した走者の得点は救援投手に記録', () => {
+    // 投手交代済みの状態
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    // 救援投手 #22 がシングル→走者1塁
+    s().recordSingle()
+    expect(s().runnerResponsiblePitcher.first).toBe('home-22')
+
+    // さらにホームラン → 2人生還
+    s().recordHomeRun()
+    expect(getPGS('home', '22')!.runsAllowed).toBe(2)
+    expect(getPGS('home', '22')!.earnedRunsAllowed).toBe(2)
+    // 先発投手には影響なし
+    expect(getPGS('home', '18')?.runsAllowed ?? 0).toBe(0)
+  })
+
+  it('四球連続で継承走者が押し出し → 前の投手に失点', () => {
+    // 先発投手 #18 が満塁を作った
+    useGameStore.setState({
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 1, second: 2, third: 3 },
+      runnerResponsiblePitcher: { first: 'home-18', second: 'home-18', third: 'home-18' },
+    })
+    // 投手交代
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    // 四球 → 3塁走者(#18責任)が押し出しで生還
+    s().recordWalk()
+
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+    expect(getPGS('home', '22')!.walksAllowed).toBe(1)
+    expect(getPGS('home', '22')!.runsAllowed).toBe(0)
+  })
+
+  it('ワイルドピッチで継承走者が生還 → 前の投手に失点', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+      runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
+    })
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    s().advanceRunnersOnWildPitch()
+
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+    expect(getPGS('home', '22')?.runsAllowed ?? 0).toBe(0)
+  })
+
+  it('イニング終了で runnerResponsiblePitcher がリセットされる', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 1, second: 2, third: null },
+      runnerResponsiblePitcher: { first: 'home-18', second: 'home-18', third: null },
+      count: { balls: 0, strikes: 0, outs: 2 },
+    })
+    // 3アウト → イニング終了
+    s().recordGroundout()
+    expect(s().runnerResponsiblePitcher).toEqual({ first: null, second: null, third: null })
+  })
+
+  it('rewindInning で runnerResponsiblePitcher がリセットされる', () => {
+    useGameStore.setState({
+      currentInning: 2,
+      currentHalf: 'top',
+      runnerResponsiblePitcher: { first: 'home-18', second: 'home-22', third: null },
+    })
+    s().rewindInning()
+    expect(s().runnerResponsiblePitcher).toEqual({ first: null, second: null, third: null })
+  })
+
+  it('setRunnerAtBase で responsiblePitcher が現在の投手に設定される', () => {
+    s().setRunnerAtBase('second', true, 5)
+    expect(s().runnerResponsiblePitcher.second).toBe('home-18')
+  })
+
+  it('setRunnerAtBase で走者を除去すると responsiblePitcher がクリアされる', () => {
+    useGameStore.setState({
+      runners: { first: false, second: true, third: false },
+      runnerIndices: { first: null, second: 5, third: null },
+      runnerResponsiblePitcher: { first: null, second: 'home-18', third: null },
+    })
+    s().setRunnerAtBase('second', null)
+    expect(s().runnerResponsiblePitcher.second).toBeNull()
+  })
+
+  it('犠牲フライで継承走者が生還 → 前の投手に失点', () => {
+    useGameStore.setState({
+      runners: { first: false, second: false, third: true },
+      runnerIndices: { first: null, second: null, third: 3 },
+      runnerResponsiblePitcher: { first: null, second: null, third: 'home-18' },
+      lastBatterIndex: 0,
+    })
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    s().recordSacrificeFly()
+
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+    expect(getPGS('home', '22')!.outsRecorded).toBe(1)
+    expect(getPGS('home', '22')!.runsAllowed).toBe(0)
+  })
+
+  it('setRunnerAtBase で走者を別の塁に移動すると責任投手が引き継がれる', () => {
+    // 先発投手 #18 が1塁走者を出した
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 3, second: null, third: null },
+      runnerResponsiblePitcher: { first: 'home-18', second: null, third: null },
+    })
+    // 投手交代
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    // 手動で1塁→2塁に移動 (フィルダーズチョイス等)
+    s().setRunnerAtBase('second', 3)
+
+    // 1塁はクリアされ、2塁には先発投手#18の責任が引き継がれる
+    expect(s().runnerResponsiblePitcher.first).toBeNull()
+    expect(s().runnerResponsiblePitcher.second).toBe('home-18')
+  })
+
+  /**
+   * 公認野球規則シナリオ:
+   * 0out 1-2塁（先発投手#18の走者）→ 投手交代 → 救援投手#22
+   * フィルダーズチョイスで3塁フォースアウト、打者は1塁到達、1塁走者→2塁
+   * その後、2塁走者（元1塁走者=先発投手#18の走者）が生還
+   * → 先発投手#18の自責点
+   */
+  it('FC手動操作: 継承走者を別の塁に移動しても前の投手に自責点が記録される', () => {
+    // 先発投手 #18が1・2塁を作った (R1=idx1, R2=idx2)
+    useGameStore.setState({
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 1, second: 2, third: null },
+      runnerResponsiblePitcher: { first: 'home-18', second: 'home-18', third: null },
+      count: { balls: 0, strikes: 0, outs: 0 },
+    })
+
+    // 投手交代: #18 → #22
+    s().setPitcher({ name: '救援', number: '22', position: '投手' })
+
+    // === フィルダーズチョイス操作 ===
+    // 1) 2塁走者(idx2)が3塁でフォースアウト → 除去
+    s().setRunnerAtBase('second', null)
+    // 2) 1塁走者(idx1)を2塁へ移動
+    s().setRunnerAtBase('second', 1)
+    // 3) 打者(idx0)を1塁へ配置 (新規 → 救援投手#22の責任)
+    s().setRunnerAtBase('first', 0)
+    // 4) +1アウト
+    useGameStore.setState({ count: { ...s().count, outs: s().count.outs + 1 } })
+
+    // 状態確認: 1out, 1-2塁
+    expect(s().count.outs).toBe(1)
+    expect(s().runners).toEqual({ first: true, second: true, third: false })
+    // 責任投手の確認
+    expect(s().runnerResponsiblePitcher.first).toBe('home-22') // 打者は救援投手#22の責任
+    expect(s().runnerResponsiblePitcher.second).toBe('home-18') // 元1塁走者は先発投手#18の責任
+
+    // 2塁走者(先発投手#18の走者)が生還
+    s().scoreRunnerWithRBI(1)
+
+    // 先発投手#18に自責点
+    expect(getPGS('home', '18')!.runsAllowed).toBe(1)
+    expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
+    // 救援投手#22には失点なし
+    expect(getPGS('home', '22')?.runsAllowed ?? 0).toBe(0)
+  })
+})
