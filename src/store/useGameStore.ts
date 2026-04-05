@@ -1069,7 +1069,11 @@ export const useGameStore = create<GameStore>()(
 
       setGameOver: (over) => set({ isGameOver: over }),
 
-      newGame: () => set({ ...initialGameState }),
+      newGame: () => set((s) => ({
+        ...initialGameState,
+        overlayPositions: s.overlayPositions,
+        overlayScale: s.overlayScale,
+      })),
 
       replaceState: (state) => set(state),
 
