@@ -1,10 +1,11 @@
-import type { GameState } from '../types'
+import type { GameState, OverlayPosition } from '../types'
 
 const CHANNEL_NAME = 'yakyuu-sync'
 
 export type SyncMessage =
   | { type: 'state-update'; state: GameState }
   | { type: 'request-state' }
+  | { type: 'position-update'; id: string; position: OverlayPosition }
 
 let channel: BroadcastChannel | null = null
 
@@ -62,6 +63,30 @@ export function onStateRequest(callback: () => void): () => void {
   const handler = (event: MessageEvent<SyncMessage>) => {
     if (event.data.type === 'request-state') {
       callback()
+    }
+  }
+  ch.addEventListener('message', handler)
+  return () => ch.removeEventListener('message', handler)
+}
+
+/** オーバーレイ側: ドラッグ後の位置をコントロールパネルへ送信する */
+export function broadcastPositionUpdate(id: string, position: OverlayPosition): void {
+  const ch = getChannel()
+  if (!ch) return
+  try {
+    ch.postMessage({ type: 'position-update', id, position } satisfies SyncMessage)
+  } catch {
+    // ignore
+  }
+}
+
+/** コントロールパネル側: オーバーレイからの位置更新を受信するコールバックを登録 */
+export function onPositionUpdate(callback: (id: string, position: OverlayPosition) => void): () => void {
+  const ch = getChannel()
+  if (!ch) return () => {}
+  const handler = (event: MessageEvent<SyncMessage>) => {
+    if (event.data.type === 'position-update') {
+      callback(event.data.id, event.data.position)
     }
   }
   ch.addEventListener('message', handler)

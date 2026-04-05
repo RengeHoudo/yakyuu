@@ -12,7 +12,7 @@ import TickerControl from '../components/control/TickerControl'
 import EffectControl from '../components/control/EffectControl'
 import MascotControl from '../components/control/MascotControl'
 import { useGameStore, extractGameState } from '../store/useGameStore'
-import { broadcastState, onStateRequest } from '../lib/sync'
+import { broadcastState, onStateRequest, onPositionUpdate } from '../lib/sync'
 
 /** コントロール側から定期的にフルステートをブロードキャストする。 */
 function usePeriodicBroadcast() {
@@ -45,9 +45,18 @@ function saveOrder(order: string[]) {
 
 export default function ControlPage() {
   useEffect(() => {
-    return onStateRequest(() => {
+    const unsubRequest = onStateRequest(() => {
       broadcastState(extractGameState(useGameStore.getState()))
     })
+    // オーバーレイでドラッグされた位置を受信し、コントロール側のストアに保存する。
+    // コントロールの localStorage に永続化されるため、OBS 再起動後も位置が復元される。
+    const unsubPosition = onPositionUpdate((id, position) => {
+      useGameStore.getState().setOverlayPosition(id, position)
+    })
+    return () => {
+      unsubRequest()
+      unsubPosition()
+    }
   }, [])
 
   usePeriodicBroadcast()

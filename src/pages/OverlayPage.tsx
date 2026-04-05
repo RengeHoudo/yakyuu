@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBroadcastSync } from '../hooks/useBroadcastSync'
 import { useStorageSync } from '../hooks/useStorageSync'
 import { useGameStore, setPreventPersistWrites } from '../store/useGameStore'
-import { requestState } from '../lib/sync'
+import { requestState, broadcastPositionUpdate } from '../lib/sync'
 import { loadOverlayCache } from '../lib/overlayCache'
 import Scoreboard from '../components/overlay/Scoreboard'
 import PlayerInfo from '../components/overlay/PlayerInfo'
@@ -86,6 +86,8 @@ function DraggableBox({
       dragging.current = false
       // ドラッグ終了時のみ store に書き込む（localStorage 書き込み削減）
       setOverlayPosition(id, localPosRef.current)
+      // コントロール側に位置を送信し、永続化してもらう
+      broadcastPositionUpdate(id, localPosRef.current)
     }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)

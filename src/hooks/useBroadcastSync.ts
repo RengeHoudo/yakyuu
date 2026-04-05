@@ -9,6 +9,14 @@ export function useBroadcastSync(): void {
   const prevPositionsRef = useRef<string>('')
 
   useEffect(() => {
+    // キャッシュから復元済みの overlayPositions を保護するため、
+    // 現在のストア値で初期化する。初回メッセージで位置が上書きされるのを防ぐ。
+    if (!prevPositionsRef.current) {
+      prevPositionsRef.current = JSON.stringify(
+        useGameStore.getState().overlayPositions ?? {},
+      )
+    }
+
     const unsubscribe = onStateUpdate((state) => {
       // overlayPositions: コントロール側で変更があった場合のみ反映する。
       // オーバーレイは localStorage に書けないため、

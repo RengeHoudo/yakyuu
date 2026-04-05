@@ -22,6 +22,14 @@ export function useStorageSync(): void {
   const prevPositionsRef = useRef<string>('')
 
   useEffect(() => {
+    // キャッシュから復元済みの overlayPositions を保護するため、
+    // 現在のストア値で初期化する。初回ポーリングで位置が上書きされるのを防ぐ。
+    if (!prevPositionsRef.current) {
+      prevPositionsRef.current = JSON.stringify(
+        useGameStore.getState().overlayPositions ?? {},
+      )
+    }
+
     function applyStoredState() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw || raw === lastRawRef.current) return
