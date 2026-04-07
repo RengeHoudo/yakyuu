@@ -9,7 +9,7 @@ import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { useGameStore } from '../../../store/useGameStore'
 import { initialGameState } from '../../../types'
-import type { Team, LineupPlayer, PlayerInfo } from '../../../types'
+import type { Team, LineupPlayer, PlayerInfo, Position } from '../../../types'
 import LineupCard from '../LineupCard'
 
 vi.mock('../../../lib/sync', () => ({ broadcastState: vi.fn() }))
@@ -26,14 +26,9 @@ const makeLineup = (): LineupPlayer[] => {
     order: i + 1,
     name: `選手${i + 1}`,
     number: `${i + 1}`,
-    position: ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', '投'][i],
+    position: (['投', '捕', '一', '二', '三', '遊', '左', '中', '右', '投'] as const)[i] as Position,
     stat: '',
     statLabel: '',
-    hits: 0,
-    atBats: 0,
-    walks: 0,
-    rpiHits: 0,
-    rpiAtBats: 0,
   }))
   return lineup
 }
@@ -71,7 +66,7 @@ describe('LineupCard 投手欄の相手チーム名表示', () => {
       pitchCount: 42,
     })
 
-    const { container } = render(<LineupCard />)
+    render(<LineupCard />)
 
     // 相手チーム（ホーム）の shortName が表示される
     expect(screen.getByText('ホークス')).toBeInTheDocument()
