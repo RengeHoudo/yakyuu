@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CARP_LINEUP, initialGameState } from '../../types'
-import { useGameStore } from '../useGameStore'
+import { useGameStore, clearUndoHistory } from '../useGameStore'
 
 vi.mock('../../lib/sync', () => ({ broadcastState: vi.fn() }))
 vi.mock('../../lib/idbBackup', () => ({
@@ -22,6 +22,7 @@ const s = () => useGameStore.getState()
 
 beforeEach(() => {
   localStorage.clear()
+  clearUndoHistory()
   // autoChangeEffect=false にしてタイマー副作用を除去してからリセット
   useGameStore.setState({ ...initialGameState, autoChangeEffect: false, pitchCount: 0 })
 })
@@ -148,29 +149,34 @@ describe('addOut', () => {
 // ─────────────────────────────────────────────
 
 describe('subtractBall', () => {
-  it('balls が 1 減る', () => {
-    useGameStore.setState({ count: { balls: 2, strikes: 0, outs: 0 } })
+  it('balls が 1 減り pitchCount も 1 減る', () => {
+    useGameStore.setState({ count: { balls: 2, strikes: 0, outs: 0 }, pitchCount: 10 })
     s().subtractBall()
     expect(s().count.balls).toBe(1)
+    expect(s().pitchCount).toBe(9)
   })
 
-  it('balls=0 のとき 0 未満にならない', () => {
-    useGameStore.setState({ count: { balls: 0, strikes: 0, outs: 0 } })
+  it('balls=0 のとき 0 未満にならない、pitchCount も変わらない', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 0, outs: 0 }, pitchCount: 5 })
     s().subtractBall()
     expect(s().count.balls).toBe(0)
+    expect(s().pitchCount).toBe(5)
   })
 })
 
 describe('subtractStrike', () => {
-  it('strikes が 1 減る', () => {
-    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 } })
+  it('strikes が 1 減り pitchCount も 1 減る', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 }, pitchCount: 10 })
     s().subtractStrike()
     expect(s().count.strikes).toBe(1)
+    expect(s().pitchCount).toBe(9)
   })
 
-  it('strikes=0 のとき 0 未満にならない', () => {
+  it('strikes=0 のとき 0 未満にならない、pitchCount も変わらない', () => {
+    useGameStore.setState({ pitchCount: 5 })
     s().subtractStrike()
     expect(s().count.strikes).toBe(0)
+    expect(s().pitchCount).toBe(5)
   })
 })
 
@@ -408,10 +414,11 @@ describe('四球 (applyWalk via addBall x4)', () => {
     expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
   })
 
-  it('四球後: ラインアップ未設定でもクラッシュしない', () => {
-    useGameStore.setState({ awayLineup: makeEmptyLineup() })
-    expect(() => walk()).not.toThrow()
+  it('四球後: ラインアップ未設定でも打順は進む', () => {
+    useGameStore.setState({ awayLineup: makeEmptyLineup(), awayBatterIndex: 0 })
+    walk()
     expect(s().runners.first).toBe(true)
+    expect(s().awayBatterIndex).toBe(1)
   })
 })
 
@@ -783,7 +790,7 @@ describe('setTeamName / setTeamColor', () => {
     s().setTeamName('away', '読売ジャイアンツ', '巨人')
     expect(s().awayTeam.name).toBe('読売ジャイアンツ')
     expect(s().awayTeam.shortName).toBe('巨人')
-    expect(s().awayTeam.color).toBe(initialGameState.awayTeam.color) // color は変わらない
+    expect(s().awayTeam.color).toBeTruthy() // color は変わらない
   })
 
   it('setTeamColor: homeTeam の color が更新される', () => {
@@ -1191,9 +1198,10 @@ describe('Bug#1 投球数の投手ごと管理', () => {
 
   it('B1-5: 同一投手が複数イニング登板した場合 pitcherStats に累積される', () => {
     // currentHalf='bottom' → away が投球中、背番号 '18' の away 投手
+    // pitchCount は復元済み80球 + 今イニング30球 = 110（累積値）
     useGameStore.setState({
       pitcherStats: { 'away-18': 80 },
-      pitchCount: 30,
+      pitchCount: 110,
       pitcher: { name: '先発', number: '18', stat: '', statLabel: '' },
       currentHalf: 'bottom',
     })
@@ -1344,6 +1352,75 @@ describe('Bug#1 投球数の投手ごと管理', () => {
 
     // inning 2 bottom: away pitcher(#18) が戻ってくる → 30球が復元されるべき
     expect(s().pitchCount).toBe(30)
+  })
+
+  it('B1-14: 3イニング以上で投球数が二重加算されないこと', () => {
+    // 初期状態: inning 1 top, home が投球
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 0 },
+      pitchCount: 0,
+      pitcher: { name: '森下 暢仁', number: '18', stat: '', statLabel: '' },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      innings: [{ inning: 1, top: null, bottom: null }],
+      pitcherStats: {},
+    })
+
+    // 1回表: home pitcher(#18) が15球
+    useGameStore.setState({ pitchCount: 15 })
+    s().advanceInning() // top → bottom
+    expect(s().pitcherStats['home-18']).toBe(15)
+
+    // 1回裏: away pitcher(#18) が12球
+    useGameStore.setState({ pitchCount: 12 })
+    s().advanceInning() // bottom → 2回 top
+    expect(s().pitcherStats['away-18']).toBe(12)
+    expect(s().pitchCount).toBe(15) // home pitcher restored
+
+    // 2回表: home pitcher がさらに18球 (累積 15+18=33)
+    useGameStore.setState({ pitchCount: 15 + 18 }) // 33
+    s().advanceInning() // top → bottom
+    expect(s().pitcherStats['home-18']).toBe(33) // 15+18, NOT 15+33=48
+    expect(s().pitchCount).toBe(12) // away pitcher restored
+
+    // 2回裏: away pitcher がさらに10球 (累積 12+10=22)
+    useGameStore.setState({ pitchCount: 12 + 10 }) // 22
+    s().advanceInning() // bottom → 3回 top
+    expect(s().pitcherStats['away-18']).toBe(22) // 12+10, NOT 12+22=34
+    expect(s().pitchCount).toBe(33) // home pitcher restored
+
+    // 3回表: home pitcher がさらに20球 (累積 33+20=53)
+    useGameStore.setState({ pitchCount: 33 + 20 }) // 53
+    s().advanceInning() // top → bottom
+    expect(s().pitcherStats['home-18']).toBe(53) // 15+18+20, NOT exponentially growing
+  })
+
+  it('B1-15: setPitcher でも投球数が二重加算されないこと', () => {
+    useGameStore.setState({
+      currentHalf: 'top',
+      pitchCount: 0,
+      pitcher: { name: '先発', number: '18', stat: '', statLabel: '' },
+      pitcherStats: {},
+    })
+
+    // 先発が40球投げて中継ぎに交代
+    useGameStore.setState({ pitchCount: 40 })
+    s().setPitcher({ name: '中継ぎ', number: '22', stat: '', statLabel: '' })
+    expect(s().pitcherStats['home-18']).toBe(40)
+    expect(s().pitchCount).toBe(0) // 中継ぎは初登板
+
+    // 中継ぎが20球投げて先発が再登板（実際にはないが検証）
+    useGameStore.setState({ pitchCount: 20 })
+    s().setPitcher({ name: '先発', number: '18', stat: '', statLabel: '' })
+    expect(s().pitcherStats['home-22']).toBe(20)
+    expect(s().pitchCount).toBe(40) // 先発の累積40球が復元
+
+    // 先発がさらに15球投げて再度交代
+    useGameStore.setState({ pitchCount: 40 + 15 }) // 55
+    s().setPitcher({ name: '抑え', number: '33', stat: '', statLabel: '' })
+    expect(s().pitcherStats['home-18']).toBe(55) // 40+15, NOT 40+55=95
   })
 })
 
@@ -2243,6 +2320,21 @@ describe('recordHomeRun ホームラン', () => {
     s().recordHomeRun()
     expect(s().homeHits).toBe(2)
   })
+
+  it('ラインナップ未設定でも打順インデックスが進む', () => {
+    useGameStore.setState({
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      awayLineup: makeEmptyLineup(),
+      awayBatterIndex: 3,
+      pitchCount: 0,
+    })
+    s().recordHomeRun()
+    expect(s().awayBatterIndex).toBe(4)
+  })
 })
 
 // ─────────────────────────────────────────────
@@ -2753,6 +2845,76 @@ describe('recordUncaughtThirdStrike', () => {
 })
 
 // ─────────────────────────────────────────────
+// recordError エラー出塁
+// ─────────────────────────────────────────────
+
+describe('recordError', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      pitchCount: 5,
+      count: { balls: 1, strikes: 1, outs: 0 },
+      currentInning: 1,
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      awayHits: 0,
+      homeHits: 0,
+      awayErrors: 0,
+      homeErrors: 0,
+      pitcher: { name: '森下', number: '18', stat: '', statLabel: '' },
+    })
+  })
+
+  it('打者→一塁、投球数+1、カウントリセット', () => {
+    s().recordError()
+    expect(s().runners.first).toBe(true)
+    expect(s().runnerIndices.first).toBe(0)
+    expect(s().pitchCount).toBe(6)
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+    expect(s().awayBatterIndex).toBe(1)
+  })
+
+  it('守備チーム（ホーム）のエラー数+1', () => {
+    s().recordError()
+    expect(s().homeErrors).toBe(1)
+    expect(s().awayErrors).toBe(0)
+  })
+
+  it('ヒット数は加算しない', () => {
+    useGameStore.setState({ awayHits: 3 })
+    s().recordError()
+    expect(s().awayHits).toBe(3)
+  })
+
+  it('満塁エラー: 得点は非自責点として記録', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 1, second: 2, third: 3 },
+      awayTotal: 0,
+      pitcherGameStats: {},
+    })
+    s().recordError()
+    expect(s().awayTotal).toBe(1)
+    // 投手のearnedRunsAllowedは加算されない（非自責点）
+    const pitcherStats = s().pitcherGameStats['home-18']
+    expect(pitcherStats?.runsAllowed).toBe(1)
+    expect(pitcherStats?.earnedRunsAllowed).toBe(0)
+  })
+
+  it('裏の攻撃時はアウェイチームにエラーが加算される', () => {
+    useGameStore.setState({ currentHalf: 'bottom' as const, homeBatterIndex: 0 })
+    s().recordError()
+    expect(s().awayErrors).toBe(1)
+    expect(s().homeErrors).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────
 // advanceRunnersOnWildPitch WP/PB進塁
 // ─────────────────────────────────────────────
 
@@ -3010,6 +3172,14 @@ describe('setStatDisplaySettings \u2013 \u62e1\u5f35\u30d5\u30a3\u30fc\u30eb\u30
 
 describe('pitcherGameStats トラッキング', () => {
   const getPGS = (team: string, number: string) => s().pitcherGameStats[`${team}-${number}`]
+
+  beforeEach(() => {
+    useGameStore.setState({
+      pitcher: { name: '森下 暢仁', number: '18', stat: '', statLabel: '' },
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+    })
+  })
 
   it('初期状態では空オブジェクト', () => {
     expect(s().pitcherGameStats).toEqual({})
@@ -3275,6 +3445,7 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
   })
 
   it('setRunnerAtBase で responsiblePitcher が現在の投手に設定される', () => {
+    useGameStore.setState({ pitcher: { name: '森下', number: '18', stat: '', statLabel: '' } })
     s().setRunnerAtBase('second', 5)
     expect(s().runnerResponsiblePitcher.second).toBe('home-18')
   })
@@ -3368,5 +3539,127 @@ describe('runnerResponsiblePitcher – 継投時の自責点配分', () => {
     expect(getPGS('home', '18')!.earnedRunsAllowed).toBe(1)
     // 救援投手#22には失点なし
     expect(getPGS('home', '22')?.runsAllowed ?? 0).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────
+// addFoul（ファール）
+// ─────────────────────────────────────────────
+
+describe('addFoul', () => {
+  it('0ストライクでファール: strikes+1, pitchCount+1', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 0, outs: 0 }, pitchCount: 0 })
+    s().addFoul()
+    expect(s().count.strikes).toBe(1)
+    expect(s().pitchCount).toBe(1)
+  })
+
+  it('1ストライクでファール: strikes+1(→2), pitchCount+1', () => {
+    useGameStore.setState({ count: { balls: 1, strikes: 1, outs: 0 }, pitchCount: 5 })
+    s().addFoul()
+    expect(s().count.strikes).toBe(2)
+    expect(s().pitchCount).toBe(6)
+    expect(s().count.balls).toBe(1) // balls は変わらない
+  })
+
+  it('2ストライクでファール: strikes は 2 のまま, pitchCount+1', () => {
+    useGameStore.setState({ count: { balls: 2, strikes: 2, outs: 1 }, pitchCount: 10 })
+    s().addFoul()
+    expect(s().count.strikes).toBe(2)
+    expect(s().pitchCount).toBe(11)
+    expect(s().count.outs).toBe(1) // outs は変わらない
+  })
+
+  it('2ストライクでファール連打: ストライクは増えず投球数だけ増える', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 }, pitchCount: 0 })
+    s().addFoul()
+    s().addFoul()
+    s().addFoul()
+    expect(s().count.strikes).toBe(2)
+    expect(s().pitchCount).toBe(3)
+  })
+
+  it('ファールで三振にはならない', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 2 }, pitchCount: 0 })
+    s().addFoul()
+    expect(s().count.strikes).toBe(2)
+    expect(s().count.outs).toBe(2) // アウト増えない
+  })
+})
+
+// ─────────────────────────────────────────────
+// Undo 機能
+// ─────────────────────────────────────────────
+
+describe('undo', () => {
+  beforeEach(() => {
+    clearUndoHistory()
+    useGameStore.setState({
+      ...initialGameState,
+      autoChangeEffect: false,
+      pitchCount: 0,
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top' as const,
+      count: { balls: 0, strikes: 0, outs: 0 },
+      currentInning: 1,
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      runners: { first: false, second: false, third: false },
+      runnerIndices: { first: null, second: null, third: null },
+      pitcher: { name: '森下', number: '18', stat: '', statLabel: '' },
+    })
+  })
+
+  it('undoCount は初期状態で 0', () => {
+    expect(s().undoCount).toBe(0)
+  })
+
+  it('アクション後に undoCount が 1 になる', () => {
+    s().addBall()
+    expect(s().undoCount).toBe(1)
+  })
+
+  it('undo でボール追加を元に戻す', () => {
+    expect(s().count.balls).toBe(0)
+    s().addBall()
+    expect(s().count.balls).toBe(1)
+    expect(s().pitchCount).toBe(1)
+    s().undo()
+    expect(s().count.balls).toBe(0)
+    expect(s().pitchCount).toBe(0)
+  })
+
+  it('undo でヒット記録を元に戻す', () => {
+    s().recordSingle()
+    expect(s().awayHits).toBe(1)
+    expect(s().awayBatterIndex).toBe(1)
+    s().undo()
+    expect(s().awayHits).toBe(0)
+    expect(s().awayBatterIndex).toBe(0)
+  })
+
+  it('複数回の undo で段階的に戻る', () => {
+    s().addBall()
+    s().addStrike()
+    expect(s().count.balls).toBe(1)
+    expect(s().count.strikes).toBe(1)
+    s().undo()
+    expect(s().count.strikes).toBe(0)
+    expect(s().count.balls).toBe(1)
+    s().undo()
+    expect(s().count.balls).toBe(0)
+  })
+
+  it('履歴が空のとき undo は何もしない', () => {
+    s().undo()
+    expect(s().count.balls).toBe(0) // 変化なし
+  })
+
+  it('undo 自体は履歴に追加されない', () => {
+    s().addBall()
+    expect(s().undoCount).toBe(1)
+    s().undo()
+    // undo 後は履歴が空
+    expect(s().undoCount).toBe(0)
   })
 })

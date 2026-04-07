@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LineupPlayer, PitcherGameStats, StatDisplaySettings } from '../index'
-import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, parseInningsPitched, computeLiveEra, computeLiveWhip } from '../index'
+import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, formatPitcherGameSummary, parseInningsPitched, computeLiveEra, computeLiveWhip } from '../index'
 
 const SAMPLE_PLAYER: LineupPlayer = {
   order: 1,
@@ -537,5 +537,56 @@ describe('formatPitcherStat – ライブ更新', () => {
     const gs: PitcherGameStats = { hitsAllowed: 4, walksAllowed: 1, runsAllowed: 3, earnedRunsAllowed: 3, outsRecorded: 9 }
     const result = formatPitcherStat(emptyP, makeSettings({ showEra: true }), gs)
     expect(result).toBe('防御率 9.00')
+  })
+})
+
+// ─────────────────────────────────────────────
+// formatPitcherGameSummary
+// ─────────────────────────────────────────────
+
+describe('formatPitcherGameSummary', () => {
+  it('全スタッツありのサマリー', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 5, walksAllowed: 2, runsAllowed: 3, earnedRunsAllowed: 2, outsRecorded: 18 }
+    expect(formatPitcherGameSummary(gs)).toBe('6回 被安打5 与四球2 自責2 失点3')
+  })
+
+  it('0回 (初登板直後)', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 0, walksAllowed: 0, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 0 }
+    expect(formatPitcherGameSummary(gs)).toBe('0回')
+  })
+
+  it('端数あり: 9アウト = 3回', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 3, walksAllowed: 1, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 9 }
+    expect(formatPitcherGameSummary(gs)).toBe('3回 被安打3 与四球1')
+  })
+
+  it('端数あり: 10アウト = 3.1回', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 0, walksAllowed: 0, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 10 }
+    expect(formatPitcherGameSummary(gs)).toBe('3.1回')
+  })
+
+  it('端数あり: 11アウト = 3.2回', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 1, walksAllowed: 0, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 11 }
+    expect(formatPitcherGameSummary(gs)).toBe('3.2回 被安打1')
+  })
+
+  it('1アウト = 0.1回', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 0, walksAllowed: 1, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 1 }
+    expect(formatPitcherGameSummary(gs)).toBe('0.1回 与四球1')
+  })
+
+  it('与四球のみ (四球が記録に反映される)', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 0, walksAllowed: 3, runsAllowed: 0, earnedRunsAllowed: 0, outsRecorded: 6 }
+    expect(formatPitcherGameSummary(gs)).toBe('2回 与四球3')
+  })
+
+  it('自責点と失点が同じ場合は失点を省略', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 2, walksAllowed: 0, runsAllowed: 1, earnedRunsAllowed: 1, outsRecorded: 9 }
+    expect(formatPitcherGameSummary(gs)).toBe('3回 被安打2 自責1')
+  })
+
+  it('非自責点がある場合は失点も表示', () => {
+    const gs: PitcherGameStats = { hitsAllowed: 2, walksAllowed: 0, runsAllowed: 3, earnedRunsAllowed: 1, outsRecorded: 9 }
+    expect(formatPitcherGameSummary(gs)).toBe('3回 被安打2 自責1 失点3')
   })
 })

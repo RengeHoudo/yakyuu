@@ -4,6 +4,7 @@ export default function CountControl() {
   const count = useGameStore((s) => s.count)
   const addBall = useGameStore((s) => s.addBall)
   const addStrike = useGameStore((s) => s.addStrike)
+  const addFoul = useGameStore((s) => s.addFoul)
   const addOut = useGameStore((s) => s.addOut)
   const resetCount = useGameStore((s) => s.resetCount)
   const subtractBall = useGameStore((s) => s.subtractBall)
@@ -19,12 +20,15 @@ export default function CountControl() {
   const recordIntentionalWalk = useGameStore((s) => s.recordIntentionalWalk)
   const recordHitByPitch = useGameStore((s) => s.recordHitByPitch)
   const recordUncaughtThirdStrike = useGameStore((s) => s.recordUncaughtThirdStrike)
+  const recordError = useGameStore((s) => s.recordError)
   const recordGroundout = useGameStore((s) => s.recordGroundout)
   const recordFlyout = useGameStore((s) => s.recordFlyout)
   const recordSacrificeBunt = useGameStore((s) => s.recordSacrificeBunt)
   const recordSacrificeFly = useGameStore((s) => s.recordSacrificeFly)
   const recordDoublePlay = useGameStore((s) => s.recordDoublePlay)
   const recordTriplePlay = useGameStore((s) => s.recordTriplePlay)
+  const runners = useGameStore((s) => s.runners)
+  const runnerCount = [runners.first, runners.second, runners.third].filter(Boolean).length
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -77,6 +81,12 @@ export default function CountControl() {
               className="flex-1 bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-2 rounded text-sm font-bold"
             >
               +1
+            </button>
+            <button
+              onClick={addFoul}
+              className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-black px-2 py-2 rounded text-sm font-bold"
+            >
+              F
             </button>
           </div>
         </div>
@@ -195,6 +205,12 @@ export default function CountControl() {
           >
             振逃
           </button>
+          <button
+            onClick={recordError}
+            className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            エラー
+          </button>
         </div>
       </div>
 
@@ -216,14 +232,14 @@ export default function CountControl() {
           </button>
           <button
             onClick={recordSacrificeBunt}
-            disabled={count.outs >= 2}
+            disabled={count.outs >= 2 || runnerCount < 1}
             className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             犠打
           </button>
           <button
             onClick={recordSacrificeFly}
-            disabled={count.outs >= 2}
+            disabled={count.outs >= 2 || runnerCount < 1}
             className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             犠飛
@@ -232,14 +248,14 @@ export default function CountControl() {
         <div className="flex gap-2">
           <button
             onClick={recordDoublePlay}
-            disabled={count.outs >= 2}
+            disabled={count.outs >= 2 || runnerCount < 1}
             className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             併殺
           </button>
           <button
             onClick={recordTriplePlay}
-            disabled={count.outs >= 1}
+            disabled={count.outs >= 1 || runnerCount < 2}
             className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             三重殺

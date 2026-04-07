@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import SyncStatus from '../components/control/SyncStatus'
 import GameControl from '../components/control/GameControl'
 import InningControl from '../components/control/InningControl'
@@ -61,6 +61,25 @@ export default function ControlPage() {
 
   usePeriodicBroadcast()
 
+  const undo = useGameStore((s) => s.undo)
+  const undoCount = useGameStore((s) => s.undoCount)
+
+  // Ctrl+Z ショートカット
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      // input/textarea にフォーカスがある場合はブラウザ標準の undo を優先
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      e.preventDefault()
+      undo()
+    }
+  }, [undo])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
   const allSections: Section[] = [
     { id: 'inning', label: 'イニング', component: <InningControl /> },
     { id: 'count', label: 'カウント', component: <CountControl /> },
@@ -101,6 +120,14 @@ export default function ControlPage() {
             yakyuu コントロール
           </h1>
           <div className="flex items-center gap-3">
+            <button
+              onClick={undo}
+              disabled={undoCount === 0}
+              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-bold"
+              title="元に戻す (Ctrl+Z)"
+            >
+              ↩ 元に戻す{undoCount > 0 ? ` (${undoCount})` : ''}
+            </button>
             <SyncStatus />
             <a
               href="#/overlay"

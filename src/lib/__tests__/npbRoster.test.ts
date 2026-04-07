@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { NPB_TEAM_MAP, NPB_STATS_CODE_MAP, parseNpbRosterHtml, fetchNpbRoster, parseNpbBattingHtml, parseNpbPitchingHtml, fetchNpbStats } from '../npbRoster'
+import { NPB_TEAM_MAP, NPB_STATS_CODE_MAP, parseNpbRosterHtml, fetchNpbRoster, parseNpbBattingHtml, parseNpbPitchingHtml, fetchNpbStats, parseScorePageLineup } from '../npbRoster'
 import type { RosterPlayer } from '../../types'
 
 // テスト用のミニマルなNPBページHTML
@@ -449,6 +449,35 @@ describe('fetchNpbStats', () => {
     // stats 取得失敗 → 元の players（成績フィールドなし）を返す
     expect(result[0]?.battingAvg).toBeUndefined()
   })
+
+  it('投手にも打撃成績がマージされる', async () => {
+    const battingHtml = makeBattingHtml([['森下 暢仁', '10', '20', '18', '1', '3', '1', '0', '0', '4', '2', '0', '0', '2', '0', '0', '0', '0', '8', '0', '.167', '.222', '.167']])
+    const pitchingHtml = makePitchingHtml([['森下 暢仁', '10', '5', '3']])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => battingHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => pitchingHtml } as Response)
+
+    const result = await fetchNpbStats('広島', pitcherPlayers)
+    // 投手成績
+    expect(result[0]?.appearances).toBe('10')
+    expect(result[0]?.record).toBe('5勝3敗')
+    // 打撃成績も含まれる
+    expect(result[0]?.battingAvg).toBe('.167')
+    expect(result[0]?.homeRuns).toBe('0')
+    expect(result[0]?.rbi).toBe('2')
+  })
+
+  it('投手に打撃成績がない場合は投手成績のみ', async () => {
+    const battingHtml = makeBattingHtml([])
+    const pitchingHtml = makePitchingHtml([['森下 暢仁', '10', '5', '3']])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => battingHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => pitchingHtml } as Response)
+
+    const result = await fetchNpbStats('広島', pitcherPlayers)
+    expect(result[0]?.appearances).toBe('10')
+    expect(result[0]?.battingAvg).toBeUndefined()
+  })
 })
 
 // ─────────────────────────────────────────────
@@ -475,6 +504,107 @@ describe('fetchNpbRoster – stats 統合', () => {
     expect(result).toHaveLength(2)
     expect(result[0]?.battingAvg).toBe('.278')
     expect(result[1]?.record).toBe('5勝3敗')
+  })
+})
+
+// ─────────────────────────────────────────────
+// parseScorePageLineup
+// ─────────────────────────────────────────────
+
+/** スコアページ風HTMLを生成するヘルパー */
+function makeScoreHtml(
+  left: [number, string, string][],
+  right: [number, string, string][],
+): string {
+  const makeTable = (entries: [number, string, string][]) => {
+    const rows = entries
+      .map(([order, pos, name]) => `<tr><th>${order}</th><th>${pos}</th><td><a>${name}</a></td></tr>`)
+      .join('\n')
+    return `<table>${rows}</table>`
+  }
+  return `<html><body>
+    <div id="player-order">
+      <div class="half_left">${makeTable(left)}</div>
+      <div class="half_right">${makeTable(right)}</div>
+    </div>
+  </body></html>`
+}
+
+describe('parseScorePageLineup', () => {
+  it('基本的なラインナップを正しく抽出する', () => {
+    const html = makeScoreHtml(
+      [[1, '中', '秋山'], [2, '遊', '小園'], [3, '投', '森下']],
+      [[1, '左', '柳田'], [2, '指', '近藤']],
+    )
+    const [away, home] = parseScorePageLineup(html)
+    expect(away).toHaveLength(3)
+    expect(away[0]).toEqual({ order: 1, position: '中', name: '秋山' })
+    expect(away[1]).toEqual({ order: 2, position: '遊', name: '小園' })
+    expect(away[2]).toEqual({ order: 3, position: '投', name: '森下' })
+    expect(home).toHaveLength(2)
+    expect(home[0]).toEqual({ order: 1, position: '左', name: '柳田' })
+    expect(home[1]).toEqual({ order: 2, position: 'DH', name: '近藤' })
+  })
+
+  it('代打「打」を代打として認識し打順を差し替える', () => {
+    const html = makeScoreHtml(
+      [
+        [1, '中', '秋山'],
+        [9, '右', '田村'],
+        [9, '打', '松本'],  // 代打
+      ],
+      [],
+    )
+    const [away] = parseScorePageLineup(html)
+    // 同じ打順の最後のエントリが有効
+    const order9 = away.filter((e) => e.order === 9)
+    expect(order9).toHaveLength(1)
+    expect(order9[0]).toEqual({ order: 9, position: '代', name: '松本' })
+  })
+
+  it('代走「走」を代走として認識し打順を差し替える', () => {
+    const html = makeScoreHtml(
+      [
+        [5, '一', 'マクブルーム'],
+        [5, '走', '曽根'],  // 代走
+      ],
+      [],
+    )
+    const [away] = parseScorePageLineup(html)
+    const order5 = away.filter((e) => e.order === 5)
+    expect(order5).toHaveLength(1)
+    expect(order5[0]).toEqual({ order: 5, position: '代', name: '曽根' })
+  })
+
+  it('指名打者「指」はDHにマップされる', () => {
+    const html = makeScoreHtml(
+      [[1, '指', '近藤']],
+      [],
+    )
+    const [away] = parseScorePageLineup(html)
+    expect(away[0]).toEqual({ order: 1, position: 'DH', name: '近藤' })
+  })
+
+  it('複数回の代打がある場合、最終的な選手のみ残る', () => {
+    const html = makeScoreHtml(
+      [
+        [9, '右', '田村'],
+        [9, '打', '松本'],
+        [9, '打', '堂林'],  // 2回目の代打
+      ],
+      [],
+    )
+    const [away] = parseScorePageLineup(html)
+    const order9 = away.filter((e) => e.order === 9)
+    expect(order9).toHaveLength(1)
+    expect(order9[0]).toEqual({ order: 9, position: '代', name: '堂林' })
+  })
+
+  it('player-orderがない場合は空配列', () => {
+    const html = '<html><body><div>no order</div></body></html>'
+    const [away, home] = parseScorePageLineup(html)
+    expect(away).toHaveLength(0)
+    expect(home).toHaveLength(0)
   })
 })
 

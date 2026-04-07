@@ -366,8 +366,9 @@ export async function fetchNpbStats(presetName: string, players: RosterPlayer[])
   return players.map((p) => {
     const key = nameKey(p.name)
     if (p.positionCategory === '投手') {
-      const stats = pitchingMap.get(key)
-      return stats ? { ...p, ...stats } : p
+      const pitchStats = pitchingMap.get(key)
+      const batStats = battingMap.get(key)
+      return { ...p, ...batStats, ...pitchStats }
     } else {
       const stats = battingMap.get(key)
       return stats ? { ...p, ...stats } : p
@@ -461,8 +462,11 @@ export function parseScoreUrl(url: string): { year: string; date: string; homeCo
 const SCORE_POSITION_MAP: Record<string, Position> = {
   '投': '投', '捕': '捕', '一': '一', '二': '二', '三': '三',
   '遊': '遊', '左': '左', '中': '中', '右': '右',
-  '指': 'DH', '打': 'DH', 'D': 'DH', 'DH': 'DH',
+  '指': 'DH', 'D': 'DH', 'DH': 'DH',
 }
+
+/** 代打・代走を示す守備位置表記 */
+const SUBSTITUTION_POSITIONS = new Set(['打', '走'])
 
 /** スコアページから抽出した1行分のオーダー */
 export interface ScoreLineupEntry {
@@ -497,14 +501,21 @@ export function parseScorePageLineup(html: string): [ScoreLineupEntry[], ScoreLi
       if (isNaN(orderNum) || orderNum < 1 || orderNum > 9) continue
 
       const posRaw = ths[1]?.textContent?.trim() ?? ''
-      const position = SCORE_POSITION_MAP[posRaw] ?? ''
+      const isSubstitution = SUBSTITUTION_POSITIONS.has(posRaw)
+      const position: Position = isSubstitution ? '代' : (SCORE_POSITION_MAP[posRaw] ?? '')
 
       // 選手名は <a> タグ内、またはプレーンテキスト
       const nameEl = tds[0]?.querySelector('a') ?? tds[0]
       const name = nameEl?.textContent?.trim() ?? ''
       if (!name) continue
 
-      result[hIdx]!.push({ order: orderNum, position, name })
+      // 代打・代走の場合は同じ打順の既存エントリを差し替える
+      const existingIdx = result[hIdx]!.findIndex((e) => e.order === orderNum)
+      if (existingIdx >= 0) {
+        result[hIdx]![existingIdx] = { order: orderNum, position, name }
+      } else {
+        result[hIdx]!.push({ order: orderNum, position, name })
+      }
     }
   })
 

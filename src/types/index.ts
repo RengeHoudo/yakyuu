@@ -416,6 +416,22 @@ export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySe
   return parts.join(' ')
 }
 
+/** 投手の試合中成績サマリーを生成 (コントロールパネル用) */
+export function formatPitcherGameSummary(gs: PitcherGameStats): string {
+  const ip = gs.outsRecorded >= 3
+    ? `${Math.floor(gs.outsRecorded / 3)}${gs.outsRecorded % 3 > 0 ? `.${gs.outsRecorded % 3}` : ''}`
+    : gs.outsRecorded > 0
+      ? `0.${gs.outsRecorded}`
+      : '0'
+  const parts: string[] = []
+  parts.push(`${ip}回`)
+  if (gs.hitsAllowed > 0) parts.push(`被安打${gs.hitsAllowed}`)
+  if (gs.walksAllowed > 0) parts.push(`与四球${gs.walksAllowed}`)
+  if (gs.earnedRunsAllowed > 0) parts.push(`自責${gs.earnedRunsAllowed}`)
+  if (gs.runsAllowed > gs.earnedRunsAllowed) parts.push(`失点${gs.runsAllowed}`)
+  return parts.join(' ')
+}
+
 // デモ用: 広島東洋カープ 2025スタメン
 export const CARP_LINEUP: LineupPlayer[] = [
   { order: 1, name: '秋山 翔吾', number: '55', position: '左', battingAvg: '.278', homeRuns: '4', rbi: '28', ops: '.735' },
@@ -455,8 +471,8 @@ export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
 }
 
 export const initialGameState: GameState = {
-  awayTeam: { name: '楽天', shortName: '楽天', color: '#860012' },
-  homeTeam: { name: 'ソフトバンク', shortName: 'ソフトバンク', color: '#F5C51C' },
+  awayTeam: { name: '', shortName: '', color: '#538bb0' },
+  homeTeam: { name: '', shortName: '', color: '#538bb0' },
   currentInning: 1,
   currentHalf: 'top',
   isGameOver: false,
@@ -469,13 +485,13 @@ export const initialGameState: GameState = {
   homeErrors: 0,
   count: { balls: 0, strikes: 0, outs: 0 },
   runners: { first: false, second: false, third: false },
-  batter: { name: '秋山 翔吾', number: '55', stat: '.278 4本 28打点 OPS.735', statLabel: '' },
+  batter: { ...initialPlayerInfo },
   runnerIndices: { first: null, second: null, third: null },
   runnerResponsiblePitcher: { first: null, second: null, third: null },
   lastBatterIndex: null,
-  pitcher: { name: '森下 暢仁', number: '18', stat: '10勝5敗', statLabel: '22登板' },
-  awayLineup: [...CARP_LINEUP],
-  homeLineup: [...CARP_LINEUP],
+  pitcher: { ...initialPlayerInfo },
+  awayLineup: emptyLineup(),
+  homeLineup: emptyLineup(),
   awayBatterIndex: 0,
   homeBatterIndex: 0,
   playLog: [],

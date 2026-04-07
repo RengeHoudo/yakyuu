@@ -283,6 +283,7 @@ function addRBIToBatter(s: GameState, batterIndex: number, count: number = 1): P
 interface GameActions {
   addBall: () => void
   addStrike: () => void
+  addFoul: () => void
   addOut: () => void
   resetCount: () => void
   advanceInning: () => void
@@ -306,6 +307,7 @@ interface GameActions {
   recordSacrificeBunt: () => void
   recordSacrificeFly: () => void
   recordUncaughtThirdStrike: () => void
+  recordError: () => void
   addError: (team: 'away' | 'home') => void
   setHits: (team: 'away' | 'home', count: number) => void
   setErrors: (team: 'away' | 'home', count: number) => void
@@ -355,14 +357,54 @@ interface GameActions {
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
   /** NPBスコアページURLをセットする */
   setScoreUrl: (url: string) => void
+  /** 直前の状態に戻す */
+  undo: () => void
+  /** undo 履歴件数（0 = undo 不可） */
+  undoCount: number
 }
 
 type GameStore = GameState & GameActions
 
+// ─────────────────────────────────────────────
+// Undo 用履歴スタック（persist 対象外）
+// ─────────────────────────────────────────────
+const MAX_HISTORY = 20
+const _undoHistory: GameState[] = []
+let _undoInProgress = false
+
+/** テスト用: undo 履歴をクリアする */
+export function clearUndoHistory(): void {
+  _undoHistory.length = 0
+  useGameStore.setState({ undoCount: 0 })
+}
+
+/**
+ * Undo ミドルウェア:
+ * set を呼ぶたびに現在の GameState スナップショットを _undoHistory に push する。
+ * undo() 実行中や replaceState/newGame/setOverlayPosition 等の非ゲーム操作はスキップする。
+ */
+function pushHistory(currentState: GameStore, rawSet: (partial: Partial<GameStore>) => unknown): void {
+  if (_undoInProgress) return
+  _undoHistory.push(extractGameState(currentState))
+  if (_undoHistory.length > MAX_HISTORY) _undoHistory.shift()
+  // undoCount をリアクティブに更新（再レンダリングをトリガー）
+  _undoInProgress = true
+  rawSet({ undoCount: _undoHistory.length })
+  _undoInProgress = false
+}
+
 export const useGameStore = create<GameStore>()(
   persist(
-    (set) => ({
+    (rawSet, get) => {
+      // set を wrap して呼び出し前にスナップショットを保存
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const set = ((...args: any[]) => {
+        pushHistory(get(), rawSet as any)
+        return (rawSet as any)(...args)
+      }) as typeof rawSet
+      return {
       ...initialGameState,
+      undoCount: 0,
 
       addBall: () =>
         set((s) => {
@@ -413,6 +455,16 @@ export const useGameStore = create<GameStore>()(
             return { ...statPatch, ...advanceBatterPatch(sWithOuts), ...pgsPatch, pitchCount: newPitchCount, lastBatterIndex: currentBatterIdx }
           }
           return { count: { ...s.count, strikes }, pitchCount: s.pitchCount + 1 }
+        }),
+
+      addFoul: () =>
+        set((s) => {
+          if (s.count.strikes >= 2) {
+            // 2ストライク: 投球数のみ+1
+            return { pitchCount: s.pitchCount + 1 }
+          }
+          // 0 or 1ストライク: ストライク+1 & 投球数+1
+          return { count: { ...s.count, strikes: s.count.strikes + 1 }, pitchCount: s.pitchCount + 1 }
         }),
 
       addOut: () =>
@@ -587,7 +639,7 @@ export const useGameStore = create<GameStore>()(
           const prevStats = s.pitcherStats ?? {}
           const pitcherStats = {
             ...prevStats,
-            [prevKey]: (prevStats[prevKey] ?? 0) + s.pitchCount,
+            [prevKey]: s.pitchCount,
           }
           const restoredPitchCount = pitcherStats[newKey] ?? 0
           return { pitcher: info, pitchCount: restoredPitchCount, pitcherStats }
@@ -952,6 +1004,32 @@ export const useGameStore = create<GameStore>()(
           }
         }),
 
+      recordError: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          // エラー: 打者→1塁、ランナー1塁ずつ進塁（フォース進塁）
+          const { runners, runnerIndices, runnerResponsiblePitcher, runsScored, scoredPitcherKeys } = advanceRunners(s, 1, true)
+          const errorPatch = defTeam === 'away'
+            ? { awayErrors: s.awayErrors + 1 }
+            : { homeErrors: s.homeErrors + 1 }
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1, atBats: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          return {
+            ...errorPatch,
+            ...statPatch,
+            ...addScoreRuns(s, runsScored),
+            // エラーによる得点は非自責点（earned=false）
+            ...(runsScored > 0 ? distributePitcherRunsPatch(s, scoredPitcherKeys, false) : {}),
+            runners, runnerIndices, runnerResponsiblePitcher,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+            ...advanceBatterPatch(s),
+          }
+        }),
+
       addError: (team) =>
         set((s) => team === 'away'
           ? { awayErrors: s.awayErrors + 1 }
@@ -1080,11 +1158,13 @@ export const useGameStore = create<GameStore>()(
       subtractBall: () =>
         set((s) => ({
           count: { ...s.count, balls: Math.max(0, s.count.balls - 1) },
+          pitchCount: s.count.balls > 0 ? Math.max(0, s.pitchCount - 1) : s.pitchCount,
         })),
 
       subtractStrike: () =>
         set((s) => ({
           count: { ...s.count, strikes: Math.max(0, s.count.strikes - 1) },
+          pitchCount: s.count.strikes > 0 ? Math.max(0, s.pitchCount - 1) : s.pitchCount,
         })),
 
       subtractOut: () =>
@@ -1192,7 +1272,16 @@ export const useGameStore = create<GameStore>()(
         set({ overlayScale: Math.max(0.5, Math.min(3, scale)) }),
 
       setLineupDisplayTeam: (team) => set({ lineupDisplayTeam: team }),
-    }),
+
+      undo: () => {
+        if (_undoHistory.length === 0) return
+        _undoInProgress = true
+        const prev = _undoHistory.pop()!
+        rawSet({ ...prev, undoCount: _undoHistory.length })
+        _undoInProgress = false
+      },
+    }
+    },
     {
       name: 'yakyuu-game-state',
       storage: {
@@ -1285,15 +1374,12 @@ function advanceBatterPatch(s: GameState): Partial<GameState> {
   const nextIdx = (currentIdx + 1) % 9
   const player = s[key][nextIdx]
   const countReset = { ...s.count, balls: 0, strikes: 0 }
-  if (!player || !player.name) {
-    return { count: countReset }
-  }
   return {
     [idxKey]: nextIdx,
     batter: {
-      name: player.name,
-      number: player.number,
-      stat: formatBatterStat(player),
+      name: player?.name || '',
+      number: player?.number || '',
+      stat: player?.name ? formatBatterStat(player) : '',
       statLabel: '',
     },
     count: countReset,
@@ -1370,7 +1456,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
   const prevStats = s.pitcherStats ?? {}
   const pitcherStats = {
     ...prevStats,
-    [pitcherKey]: (prevStats[pitcherKey] ?? 0) + s.pitchCount,
+    [pitcherKey]: s.pitchCount,
   }
 
   // Bug#2: 今終わったハーフのスコアが null なら 0 に確定

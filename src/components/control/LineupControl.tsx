@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
-import type { LineupPlayer, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
+import type { LineupPlayer, PitcherGameStats, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 import { fetchScorePageLineup, matchAbbreviatedName } from '../../lib/npbRoster'
+import { formatPitcherGameSummary } from '../../types'
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
 
@@ -224,12 +225,14 @@ function PitcherRow({
   onSelect,
   onChange,
   showStats,
+  gameStats,
 }: {
   player: LineupPlayer
   roster: RosterPlayer[]
   onSelect: () => void
   onChange: (p: LineupPlayer) => void
   showStats: boolean
+  gameStats?: PitcherGameStats
 }) {
   const pitchers = sortedRoster(roster).filter((r) => r.positionCategory === '投手')
   return (
@@ -342,6 +345,13 @@ function PitcherRow({
         />
       </div>
     )}
+    {gameStats && (
+      <div className="flex items-center gap-1 pl-5">
+        <span className="text-green-400 text-xs font-mono">
+          📊 {formatPitcherGameSummary(gameStats)}
+        </span>
+      </div>
+    )}
     </div>
   )
 }
@@ -373,6 +383,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const scoreRunnerNoRBI = useGameStore((s) => s.scoreRunnerNoRBI)
   const scoreRunnerUnearned = useGameStore((s) => s.scoreRunnerUnearned)
   const scoreUrl = useGameStore((s) => s.scoreUrl)
+  const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
 
   const [fetchingLineup, setFetchingLineup] = useState(false)
 
@@ -689,6 +700,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
           onSelect={() => selectBatter(side, 9)}
           onChange={(p) => setLineupPlayer(side, 9, p)}
           showStats={showStats}
+          gameStats={lineup[9].number ? pitcherGameStats[`${side}-${lineup[9].number}`] : undefined}
         />
       )}
     </div>
