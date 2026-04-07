@@ -83,10 +83,12 @@ export default function LineupCard() {
         })}
       </div>
 
-      {/* 投手情報 */}
+      {/* 相手投手情報 */}
       <PitcherBar
         pitcher={pitcher}
         pitchCount={pitchCount}
+        teamName={side === 'away' ? homeTeam.shortName : awayTeam.shortName}
+        teamColor={side === 'away' ? homeTeam.color : awayTeam.color}
         statDisplaySettings={statDisplaySettings}
         pitcherLineupPlayer={(() => {
           const defSide = currentHalf === 'top' ? 'home' : 'away'
@@ -103,9 +105,11 @@ export default function LineupCard() {
   )
 }
 
-function PitcherBar({ pitcher, pitchCount, statDisplaySettings, pitcherLineupPlayer, pitcherGameStats }: {
+function PitcherBar({ pitcher, pitchCount, teamName, teamColor, statDisplaySettings, pitcherLineupPlayer, pitcherGameStats }: {
   pitcher: PlayerInfo;
   pitchCount: number;
+  teamName: string;
+  teamColor: string;
   statDisplaySettings: StatDisplaySettings;
   pitcherLineupPlayer?: LineupPlayer;
   pitcherGameStats?: PitcherGameStats;
@@ -117,15 +121,28 @@ function PitcherBar({ pitcher, pitchCount, statDisplaySettings, pitcherLineupPla
     : [statDisplaySettings.showAppearances ? pitcher.statLabel : '', statDisplaySettings.showRecord ? pitcher.stat : ''].filter(Boolean).join(' ')
 
   return (
-    <div className="mt-2 pt-1.5 border-t border-gray-600/50 px-2 flex items-center gap-2 text-xs">
-      <span className="text-red-400 font-bold text-[10px]">投手</span>
-      <span className="font-bold text-white">{pitcher.name}</span>
-      {pitcherStat && (
-        <span className="text-yellow-400/70 font-mono text-[10px] leading-none self-center">
-          {pitcherStat}
-        </span>
-      )}
-      <span className="text-gray-400 text-[10px] ml-auto">{pitchCount}球</span>
+    <div className="mt-3 pt-2 border-t border-gray-600/50">
+      {/* 相手チーム名ヘッダー */}
+      <div
+        className="text-[10px] font-bold mb-1 px-2 py-0.5 rounded flex items-center gap-1.5"
+        style={{ backgroundColor: teamColor + '30' }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full inline-block"
+          style={{ backgroundColor: teamColor }}
+        />
+        <span className="text-gray-300">{teamName}</span>
+        <span className="text-red-400">投手</span>
+      </div>
+      <div className="px-2 flex items-center gap-2 text-xs">
+        <span className="font-bold text-white">{pitcher.name}</span>
+        {pitcherStat && (
+          <span className="text-yellow-400/70 font-mono text-[10px] leading-none self-center">
+            {pitcherStat}
+          </span>
+        )}
+        <span className="text-gray-400 text-[10px] ml-auto">{pitchCount}球</span>
+      </div>
     </div>
   )
 }
