@@ -1,6 +1,12 @@
 import { useGameStore } from '../../store/useGameStore'
 import { formatBatterStat, formatPitcherStat } from '../../types'
-import type { PitcherGameStats } from '../../types'
+import type { PitcherAppearance, PitcherGameStats } from '../../types'
+
+/** 投手の番手ラベルを取得 */
+function getAppearanceLabel(appearance?: PitcherAppearance): string | null {
+  if (!appearance) return null
+  return appearance.order === 0 ? '先発' : `${appearance.order}番手`
+}
 
 export default function PlayerInfo() {
   const batter = useGameStore((s) => s.batter)
@@ -13,6 +19,7 @@ export default function PlayerInfo() {
   const homeLineup = useGameStore((s) => s.homeLineup)
   const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
   const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
+  const pitcherHistory = useGameStore((s) => s.pitcherHistory)
 
   // 現在攻撃中チームのラインナップから打者スタッツを動的計算
   const attackingLineup = currentHalf === 'top' ? awayLineup : homeLineup
@@ -31,6 +38,12 @@ export default function PlayerInfo() {
   const pitcherStat = (pitcherLineupPlayer && pitcherLineupPlayer.name === pitcher.name)
     ? formatPitcherStat(pitcherLineupPlayer, statDisplaySettings, currentGameStats)
     : [statDisplaySettings.showAppearances ? pitcher.statLabel : '', statDisplaySettings.showRecord ? pitcher.stat : ''].filter(Boolean).join(' ')
+
+  // 投手の番手ラベル
+  const currentAppearance = pitcherHistory.find(
+    (h) => h.team === defTeam && h.number === pitcher.number && h.isActive
+  )
+  const appearanceLabel = getAppearanceLabel(currentAppearance)
 
   const hasBatter = batter.name.length > 0
   const hasPitcher = pitcher.name.length > 0
@@ -53,6 +66,9 @@ export default function PlayerInfo() {
       {hasPitcher && (
         <div className="flex items-center gap-2">
           <span className="text-red-400 font-bold text-xs">投手</span>
+          {appearanceLabel && (
+            <span className="text-yellow-300 font-bold text-xs">{appearanceLabel}</span>
+          )}
           <span className="font-bold">{pitcher.name}</span>
           {pitcherStat && (
             <span className="text-yellow-400 text-xs">

@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
-import type { LineupPlayer, PitcherGameStats, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
+import type { LineupPlayer, PitcherAppearance, PitcherGameStats, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 import { fetchScorePageLineup, matchAbbreviatedName } from '../../lib/npbRoster'
-import { formatPitcherGameSummary } from '../../types'
+import { formatPitcherGameSummary, formatOutsAsInnings } from '../../types'
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
 
@@ -226,6 +226,13 @@ function PitcherRow({
   onChange,
   showStats,
   gameStats,
+  retiredPitcherNumbers,
+  currentAppearance,
+  isCurrentPitcher,
+  teamHistory,
+  allPitcherStats,
+  allPitcherGameStats,
+  currentPitchCount,
 }: {
   player: LineupPlayer
   roster: RosterPlayer[]
@@ -233,8 +240,29 @@ function PitcherRow({
   onChange: (p: LineupPlayer) => void
   showStats: boolean
   gameStats?: PitcherGameStats
+  /** この試合で降板済みの投手背番号一覧 */
+  retiredPitcherNumbers: Set<string>
+  /** 現在の投手の登板履歴エントリ */
+  currentAppearance?: PitcherAppearance
+  /** この投手が現在登板中か */
+  isCurrentPitcher: boolean
+  /** このチームの投手登板履歴 */
+  teamHistory: PitcherAppearance[]
+  /** 投手別累計投球数 */
+  allPitcherStats: Record<string, number>
+  /** 投手別試合中成績 */
+  allPitcherGameStats: Record<string, PitcherGameStats>
+  /** 登板中投手の現在の投球数 */
+  currentPitchCount: number
 }) {
-  const pitchers = sortedRoster(roster).filter((r) => r.positionCategory === '投手')
+  const pitchers = sortedRoster(roster)
+    .filter((r) => r.positionCategory === '投手')
+    .filter((r) => !retiredPitcherNumbers.has(r.number))
+  const appearanceLabel = currentAppearance
+    ? currentAppearance.order === 0
+      ? '先発'
+      : `中継ぎ${currentAppearance.order}番手`
+    : null
   return (
     <div className="text-sm rounded px-1.5 py-1 space-y-0.5 bg-red-900/20 border border-red-800/30">
     <div className="flex items-center gap-1.5">
@@ -311,12 +339,26 @@ function PitcherRow({
       />
       <button
         onClick={onSelect}
-        className="text-xs px-2 py-1 rounded shrink-0 bg-red-700 hover:bg-red-600 text-white font-bold"
-        title="この投手を登板"
+        disabled={isCurrentPitcher}
+        className={`text-xs px-2 py-1 rounded shrink-0 font-bold ${
+          isCurrentPitcher
+            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            : 'bg-red-700 hover:bg-red-600 text-white'
+        }`}
+        title={isCurrentPitcher ? 'この投手は登板中です' : 'この投手を登板'}
       >
         登板
       </button>
     </div>
+    {/* 登板状況表示 */}
+    {isCurrentPitcher && (
+      <div className="flex items-center gap-1.5 pl-5">
+        <span className="text-green-400 text-xs font-bold animate-pulse">● 登板中</span>
+        {appearanceLabel && (
+          <span className="text-yellow-300 text-xs font-bold">{appearanceLabel}</span>
+        )}
+      </div>
+    )}
     {showStats && (
       <div className="flex items-center gap-1 pl-5">
         <input
@@ -352,6 +394,37 @@ function PitcherRow({
         </span>
       </div>
     )}
+    {/* 投手交代履歴 */}
+    {teamHistory.length > 0 && (
+      <div className="text-[10px] text-gray-400 px-2 space-y-0.5">
+        {teamHistory.map((p) => {
+          const key = `${p.team}-${p.number}`
+          const pitchCount = p.isActive ? currentPitchCount : (allPitcherStats[key] ?? 0)
+          const gs = allPitcherGameStats[key]
+          const outsRecorded = gs?.outsRecorded ?? 0
+          const label = p.order === 0 ? '先発' : `${p.order}番手`
+          if (p.isActive) {
+            return (
+              <div key={key} className="flex gap-2 text-green-400">
+                <span>{label}</span>
+                <span>{p.name}</span>
+                <span>{formatOutsAsInnings(outsRecorded)}回</span>
+                <span>{pitchCount}球</span>
+                <span className="animate-pulse">登板中</span>
+              </div>
+            )
+          }
+          return (
+            <div key={key} className="flex gap-2">
+              <span>{label}</span>
+              <span className="text-gray-300">{p.name}</span>
+              <span>{formatOutsAsInnings(outsRecorded)}回</span>
+              <span>{pitchCount}球</span>
+            </div>
+          )
+        })}
+      </div>
+    )}
     </div>
   )
 }
@@ -384,6 +457,10 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const scoreRunnerUnearned = useGameStore((s) => s.scoreRunnerUnearned)
   const scoreUrl = useGameStore((s) => s.scoreUrl)
   const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
+  const pitcher = useGameStore((s) => s.pitcher)
+  const pitcherHistory = useGameStore((s) => s.pitcherHistory)
+  const pitcherStats = useGameStore((s) => s.pitcherStats)
+  const pitchCount = useGameStore((s) => s.pitchCount)
 
   const [fetchingLineup, setFetchingLineup] = useState(false)
 
@@ -693,16 +770,35 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
       </div>
 
       {/* 投手（10番目） */}
-      {lineup[9] && (
-        <PitcherRow
-          player={lineup[9]}
-          roster={roster}
-          onSelect={() => selectBatter(side, 9)}
-          onChange={(p) => setLineupPlayer(side, 9, p)}
-          showStats={showStats}
-          gameStats={lineup[9].number ? pitcherGameStats[`${side}-${lineup[9].number}`] : undefined}
-        />
-      )}
+      {lineup[9] && (() => {
+        const retiredPitcherNumbers = new Set(
+          pitcherHistory
+            .filter((h) => h.team === side && !h.isActive)
+            .map((h) => h.number)
+        )
+        const currentAppearance = pitcherHistory.find(
+          (h) => h.team === side && h.number === lineup[9]!.number && h.isActive
+        )
+        const isCurrentPitcher = pitcher.number === lineup[9]!.number && pitcher.name === lineup[9]!.name
+        const teamHistory = pitcherHistory.filter((h) => h.team === side)
+        return (
+          <PitcherRow
+            player={lineup[9]!}
+            roster={roster}
+            onSelect={() => selectBatter(side, 9)}
+            onChange={(p) => setLineupPlayer(side, 9, p)}
+            showStats={showStats}
+            gameStats={lineup[9]!.number ? pitcherGameStats[`${side}-${lineup[9]!.number}`] : undefined}
+            retiredPitcherNumbers={retiredPitcherNumbers}
+            currentAppearance={currentAppearance}
+            isCurrentPitcher={isCurrentPitcher}
+            teamHistory={teamHistory}
+            allPitcherStats={pitcherStats}
+            allPitcherGameStats={pitcherGameStats}
+            currentPitchCount={pitchCount}
+          />
+        )
+      })()}
     </div>
   )
 }

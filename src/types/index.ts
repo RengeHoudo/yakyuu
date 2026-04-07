@@ -185,6 +185,17 @@ export const defaultPitcherGameStats: PitcherGameStats = {
   outsRecorded: 0,
 }
 
+/** 投手の登板履歴エントリ */
+export interface PitcherAppearance {
+  name: string
+  number: string
+  team: 'away' | 'home'
+  /** 0 = 先発, 1 = 中継ぎ1番手, 2 = 中継ぎ2番手, ... */
+  order: number
+  /** true = 現在登板中 */
+  isActive: boolean
+}
+
 export type MascotMode = 'idle' | 'hidden' | 'celebration' | 'waiting'
 
 export type EffectType = 'homerun' | 'strikeout' | 'double' | 'triple' | 'hit' | 'steal' | 'fineplay' | 'error' | 'walk' | 'change' | null
@@ -250,6 +261,8 @@ export interface GameState {
   statDisplaySettings: StatDisplaySettings
   /** NPBスコアページURL */
   scoreUrl: string
+  /** 投手の登板履歴。試合中に登板した全投手を記録する */
+  pitcherHistory: PitcherAppearance[]
 }
 
 /**
@@ -417,12 +430,18 @@ export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySe
 }
 
 /** 投手の試合中成績サマリーを生成 (コントロールパネル用) */
+/** outsRecorded から投球回文字列を生成する (例: 18→"6", 10→"3.1", 2→"0.2", 0→"0") */
+export function formatOutsAsInnings(outsRecorded: number): string {
+  if (outsRecorded >= 3) {
+    const full = Math.floor(outsRecorded / 3)
+    const frac = outsRecorded % 3
+    return frac > 0 ? `${full}.${frac}` : `${full}`
+  }
+  return outsRecorded > 0 ? `0.${outsRecorded}` : '0'
+}
+
 export function formatPitcherGameSummary(gs: PitcherGameStats): string {
-  const ip = gs.outsRecorded >= 3
-    ? `${Math.floor(gs.outsRecorded / 3)}${gs.outsRecorded % 3 > 0 ? `.${gs.outsRecorded % 3}` : ''}`
-    : gs.outsRecorded > 0
-      ? `0.${gs.outsRecorded}`
-      : '0'
+  const ip = formatOutsAsInnings(gs.outsRecorded)
   const parts: string[] = []
   parts.push(`${ip}回`)
   if (gs.hitsAllowed > 0) parts.push(`被安打${gs.hitsAllowed}`)
@@ -512,6 +531,7 @@ export const initialGameState: GameState = {
   pitcherGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
+  pitcherHistory: [],
 }
 
 export { emptyLineup }

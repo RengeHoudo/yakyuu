@@ -28,7 +28,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
-  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl',
+  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -637,12 +637,13 @@ export const useGameStore = create<GameStore>()(
           const prevKey = `${defTeam}-${s.pitcher.number}`
           const newKey  = `${defTeam}-${info.number}`
           const prevStats = s.pitcherStats ?? {}
-          const pitcherStats = {
-            ...prevStats,
-            [prevKey]: s.pitchCount,
-          }
+          const pitcherStats = s.pitcher.number
+            ? { ...prevStats, [prevKey]: s.pitchCount }
+            : { ...prevStats }
           const restoredPitchCount = pitcherStats[newKey] ?? 0
-          return { pitcher: info, pitchCount: restoredPitchCount, pitcherStats }
+          // 投手履歴を更新
+          const historyPatch = registerPitcherAppearance(s, defTeam, info.name, info.number)
+          return { pitcher: info, pitchCount: restoredPitchCount, pitcherStats, ...historyPatch }
         }),
 
       addHit: (team) =>
@@ -1060,13 +1061,32 @@ export const useGameStore = create<GameStore>()(
 
           // 10番目（index 9）は投手 → 投手として登録
           if (index === 9) {
+            // 同じ投手が既に登板中なら何もしない
+            if (s.pitcher.number === player.number && s.pitcher.name === player.name) {
+              return s
+            }
+            const pitcherInfo: PlayerInfo = {
+              name: player.name,
+              number: player.number,
+              stat: player.record || '',
+              statLabel: player.appearances ? `${player.appearances}登板` : '',
+            }
+            // 投手履歴を更新
+            const historyPatch = registerPitcherAppearance(s, team, player.name, player.number)
+            // 投手交代: 投球数の保存・復元
+            const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+            const prevKey = `${defTeam}-${s.pitcher.number}`
+            const newKey  = `${defTeam}-${player.number}`
+            const prevStats = s.pitcherStats ?? {}
+            const pitcherStats = s.pitcher.number
+              ? { ...prevStats, [prevKey]: s.pitchCount }
+              : { ...prevStats }
+            const restoredPitchCount = pitcherStats[newKey] ?? 0
             return {
-              pitcher: {
-                name: player.name,
-                number: player.number,
-                stat: player.record || '',
-                statLabel: player.appearances ? `${player.appearances}登板` : '',
-              },
+              pitcher: pitcherInfo,
+              pitchCount: restoredPitchCount,
+              pitcherStats,
+              ...historyPatch,
             }
           }
 
@@ -1348,6 +1368,44 @@ useGameStore.subscribe((state) => {
   broadcastState(extractGameState(state))
 })
 
+/** 投手登板履歴を更新するパッチを生成する */
+export function registerPitcherAppearance(
+  s: GameState,
+  team: 'away' | 'home',
+  name: string,
+  number: string,
+): Partial<GameState> {
+  const history = [...(s.pitcherHistory ?? [])]
+  // 既にこの投手がこのチームの履歴にあるか
+  const existing = history.find((h) => h.team === team && h.number === number)
+  if (existing && existing.isActive) {
+    // 既に登板中 → 何もしない
+    return {}
+  }
+  // 前の登板中投手を非アクティブにする
+  for (let i = 0; i < history.length; i++) {
+    if (history[i]!.team === team && history[i]!.isActive) {
+      history[i] = { ...history[i]!, isActive: false }
+    }
+  }
+  if (existing) {
+    // 既に履歴にあるが非アクティブ（再登板）→ アクティブに戻す
+    const idx = history.indexOf(existing)
+    history[idx] = { ...existing, isActive: true }
+  } else {
+    // 新規登板
+    const teamHistory = history.filter((h) => h.team === team)
+    history.push({
+      name,
+      number,
+      team,
+      order: teamHistory.length,
+      isActive: true,
+    })
+  }
+  return { pitcherHistory: history }
+}
+
 /** アウトプレー共通: outsToAdd 個アウト & 打者交代 & 投球数+1 & 打者成績更新 */
 function applyOutPlay(s: GameState, outsToAdd: number): Partial<GameState> {
   const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
@@ -1504,6 +1562,11 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
   const incomingKey = pitcherPlayer?.name ? `${newDefTeam}-${pitcherPlayer.number}` : null
   const restoredPitchCount = incomingKey ? (pitcherStats[incomingKey] ?? 0) : 0
 
+  // 新投手を登板履歴に登録
+  const historyPatch = pitcherPlayer?.name
+    ? registerPitcherAppearance(s, newDefTeam, pitcherPlayer.name, pitcherPlayer.number)
+    : {}
+
   const resetState: Partial<GameState> = {
     count: { balls: 0, strikes: 0, outs: 0 },
     runners: { first: false, second: false, third: false },
@@ -1515,6 +1578,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
     batter: newBatter,
     pitcher: newPitcher,
     lineupDisplayTeam: attackTeam, // Bug#4
+    ...historyPatch,
   }
 
   if (s.autoChangeEffect) {
