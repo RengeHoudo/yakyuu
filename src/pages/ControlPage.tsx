@@ -5,7 +5,6 @@ import InningControl from '../components/control/InningControl'
 import CountControl from '../components/control/CountControl'
 import RunnerControl from '../components/control/RunnerControl'
 import ScoreControl from '../components/control/ScoreControl'
-import PlayerControl from '../components/control/PlayerControl'
 import PlayLogControl from '../components/control/PlayLogControl'
 import LineupControl from '../components/control/LineupControl'
 import TickerControl from '../components/control/TickerControl'
@@ -85,7 +84,6 @@ export default function ControlPage() {
     { id: 'count', label: 'カウント', component: <CountControl /> },
     { id: 'runner', label: '走者', component: <RunnerControl /> },
     { id: 'score', label: '得点・安打・失策', component: <ScoreControl /> },
-    { id: 'player', label: '選手情報', component: <PlayerControl /> },
     { id: 'game', label: '試合管理', component: <GameControl /> },
     { id: 'lineup', label: '打順・選手', component: <LineupControl /> },
     { id: 'effect', label: 'エフェクト', component: <EffectControl /> },

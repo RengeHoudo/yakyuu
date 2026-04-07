@@ -5,7 +5,6 @@ import { useGameStore, setPreventPersistWrites } from '../store/useGameStore'
 import { requestState, broadcastPositionUpdate } from '../lib/sync'
 import { loadOverlayCache } from '../lib/overlayCache'
 import Scoreboard from '../components/overlay/Scoreboard'
-import PlayerInfo from '../components/overlay/PlayerInfo'
 import PlayLog from '../components/overlay/PlayLog'
 import LineupCard from '../components/overlay/LineupCard'
 import GameTimer from '../components/overlay/GameTimer'
@@ -185,11 +184,6 @@ export default function OverlayPage() {
       {/* 両チーム打順 — 右上 */}
       <DraggableBox id="lineup" scale={overlayScale}>
         <LineupCard />
-      </DraggableBox>
-
-      {/* 選手情報 — 左下 */}
-      <DraggableBox id="playerInfo" scale={overlayScale}>
-        <PlayerInfo />
       </DraggableBox>
 
       {/* 経過ログ — 右下 */}
