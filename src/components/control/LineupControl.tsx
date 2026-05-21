@@ -2,9 +2,196 @@ import { useRef, useState } from 'react'
 import { useGameStore } from '../../store/useGameStore'
 import { useRosterStore } from '../../store/useRosterStore'
 import type { LineupPlayer, PitcherAppearance, PitcherGameStats, Position, PositionCategory, RosterPlayer, RunnerIndices } from '../../types'
+import { defaultPitcherGameStats, formatPitcherGameSummary, formatOutsAsInnings, computeLiveEra, computeLiveWhip } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 import { fetchScorePageLineup, matchAbbreviatedName } from '../../lib/npbRoster'
-import { formatPitcherGameSummary, formatOutsAsInnings } from '../../types'
+
+// ─────────────────────────────────────────────
+// 試合内成績編集モーダル
+// ─────────────────────────────────────────────
+
+/** 打者用試合内成績編集モーダル */
+function BatterGameStatsModal({
+  player,
+  team,
+  index,
+  onClose,
+}: {
+  player: LineupPlayer
+  team: 'away' | 'home'
+  index: number
+  onClose: () => void
+}) {
+  const setLineupPlayerGameStats = useGameStore((s) => s.setLineupPlayerGameStats)
+
+  const [atBats, setAtBats] = useState(String(player.gameAtBats ?? 0))
+  const [walks, setWalks] = useState(String(player.gameWalks ?? 0))
+  const [hbp, setHbp] = useState(String(player.gameHitByPitch ?? 0))
+  const [sacFlies, setSacFlies] = useState(String(player.gameSacFlies ?? 0))
+  const [sacBunts, setSacBunts] = useState(String(player.gameSacBunts ?? 0))
+  const [singles, setSingles] = useState(String(player.gameSingles ?? 0))
+  const [doubles, setDoubles] = useState(String(player.gameDoubles ?? 0))
+  const [triples, setTriples] = useState(String(player.gameTriples ?? 0))
+  const [homeRuns, setHomeRuns] = useState(String(player.gameHomeRuns ?? 0))
+
+  const toNum = (v: string) => Math.max(0, parseInt(v, 10) || 0)
+
+  const handleSave = () => {
+    setLineupPlayerGameStats(team, index, {
+      gameAtBats: toNum(atBats),
+      gameWalks: toNum(walks),
+      gameHitByPitch: toNum(hbp),
+      gameSacFlies: toNum(sacFlies),
+      gameSacBunts: toNum(sacBunts),
+      gameSingles: toNum(singles),
+      gameDoubles: toNum(doubles),
+      gameTriples: toNum(triples),
+      gameHomeRuns: toNum(homeRuns),
+    })
+    onClose()
+  }
+
+  const numInput = (label: string, value: string, onChange: (v: string) => void) => (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-gray-300 text-xs w-20 shrink-0">{label}</span>
+      <input
+        type="number"
+        min={0}
+        className="bg-gray-700 text-white rounded px-2 py-1 text-sm w-20 text-right"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-gray-900 border border-gray-600 rounded-lg p-4 w-72 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-white font-bold text-sm">
+            {player.name || `${index + 1}番`} — 試合内打撃成績
+          </span>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
+        </div>
+        <p className="text-gray-500 text-xs">打率・HR・打点・OPSは変更できません（通算成績）</p>
+        <div className="space-y-2">
+          {numInput('打数', atBats, setAtBats)}
+          {numInput('四球', walks, setWalks)}
+          {numInput('死球', hbp, setHbp)}
+          {numInput('犠飛', sacFlies, setSacFlies)}
+          {numInput('犠打', sacBunts, setSacBunts)}
+          {numInput('単打', singles, setSingles)}
+          {numInput('二塁打', doubles, setDoubles)}
+          {numInput('三塁打', triples, setTriples)}
+          {numInput('本塁打', homeRuns, setHomeRuns)}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={handleSave}
+            className="flex-1 bg-accent hover:bg-accent/80 text-white rounded py-1.5 text-sm font-bold"
+          >
+            保存
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded py-1.5 text-sm"
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 投手用試合内成績編集モーダル */
+function PitcherGameStatsModal({
+  player,
+  pitcherKey,
+  currentStats,
+  onClose,
+}: {
+  player: LineupPlayer
+  pitcherKey: string
+  currentStats: PitcherGameStats
+  onClose: () => void
+}) {
+  const setPitcherGameStats = useGameStore((s) => s.setPitcherGameStats)
+
+  const [pitchCount, setPitchCount] = useState(String(currentStats.pitchCount ?? 0))
+  const [outsRecorded, setOutsRecorded] = useState(String(currentStats.outsRecorded))
+  const [hitsAllowed, setHitsAllowed] = useState(String(currentStats.hitsAllowed))
+  const [walksAllowed, setWalksAllowed] = useState(String(currentStats.walksAllowed))
+  const [earnedRuns, setEarnedRuns] = useState(String(currentStats.earnedRunsAllowed))
+
+  const toNum = (v: string) => Math.max(0, parseInt(v, 10) || 0)
+
+  const handleSave = () => {
+    // 投球回はアウト数から算出: outsRecorded / 3
+    setPitcherGameStats(pitcherKey, {
+      ...currentStats,
+      pitchCount: toNum(pitchCount),
+      outsRecorded: toNum(outsRecorded),
+      hitsAllowed: toNum(hitsAllowed),
+      walksAllowed: toNum(walksAllowed),
+      earnedRunsAllowed: toNum(earnedRuns),
+    })
+    onClose()
+  }
+
+  const numInput = (label: string, value: string, onChange: (v: string) => void) => (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-gray-300 text-xs w-24 shrink-0">{label}</span>
+      <input
+        type="number"
+        min={0}
+        className="bg-gray-700 text-white rounded px-2 py-1 text-sm w-20 text-right"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-gray-900 border border-gray-600 rounded-lg p-4 w-72 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-white font-bold text-sm">
+            {player.name || '投手'} — 試合内投手成績
+          </span>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
+        </div>
+        <div className="space-y-2">
+          {numInput('投球数', pitchCount, setPitchCount)}
+          {numInput('アウト数（投球回）', outsRecorded, setOutsRecorded)}
+          {numInput('被安打', hitsAllowed, setHitsAllowed)}
+          {numInput('与四球', walksAllowed, setWalksAllowed)}
+          {numInput('自責点', earnedRuns, setEarnedRuns)}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={handleSave}
+            className="flex-1 bg-accent hover:bg-accent/80 text-white rounded py-1.5 text-sm font-bold"
+          >
+            保存
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded py-1.5 text-sm"
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
 
@@ -32,6 +219,7 @@ function BatterRow({
   onScoreNoRBI,
   onScoreUnearned,
   showStats,
+  onOpenGameStats,
 }: {
   player: LineupPlayer
   isCurrent: boolean
@@ -45,6 +233,7 @@ function BatterRow({
   onScoreNoRBI: () => void
   onScoreUnearned: () => void
   showStats: boolean
+  onOpenGameStats: () => void
 }) {
   const sorted = sortedRoster(roster)
   return (
@@ -186,33 +375,34 @@ function BatterRow({
           </div>
         )}
       </div>
-      {/* 2行目: スタッツ（打率・HR・打点・OPS） */}
+      {/* 2行目: スタッツ（打率・HR・打点・OPS） ─ 読み取り専用 + 試合成績編集ボタン */}
       {showStats && (
         <div className="flex items-center gap-1 pl-5">
-          <input
-            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-            placeholder="打率"
-            value={player.battingAvg || ''}
-            onChange={(e) => onChange({ ...player, battingAvg: e.target.value })}
-          />
-          <input
-            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-10 shrink-0"
-            placeholder="HR"
-            value={player.homeRuns || ''}
-            onChange={(e) => onChange({ ...player, homeRuns: e.target.value })}
-          />
-          <input
-            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-10 shrink-0"
-            placeholder="打点"
-            value={player.rbi || ''}
-            onChange={(e) => onChange({ ...player, rbi: e.target.value })}
-          />
-          <input
-            className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-            placeholder="OPS"
-            value={player.ops || ''}
-            onChange={(e) => onChange({ ...player, ops: e.target.value })}
-          />
+          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-14 shrink-0 text-center">
+            {player.battingAvg || '---'}
+          </span>
+          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-10 shrink-0 text-center">
+            {player.homeRuns ?? '-'}本
+          </span>
+          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-10 shrink-0 text-center">
+            {player.rbi ?? '-'}打点
+          </span>
+          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-14 shrink-0 text-center">
+            {player.ops || '---'}
+          </span>
+          <button
+            onClick={onOpenGameStats}
+            className="bg-gray-600 hover:bg-gray-500 text-gray-200 rounded px-2 py-0.5 text-xs shrink-0"
+            title="この試合の打撃成績を編集"
+          >
+            成績編集
+          </button>
+          {(player.gameAtBats != null) && (
+            <span className="text-green-400 text-xs">
+              {player.gameAtBats}打数
+              {((player.gameSingles ?? 0) + (player.gameDoubles ?? 0) + (player.gameTriples ?? 0) + (player.gameHomeRuns ?? 0))}安打
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -233,6 +423,7 @@ function PitcherRow({
   allPitcherStats,
   allPitcherGameStats,
   currentPitchCount,
+  onOpenGameStats,
 }: {
   player: LineupPlayer
   roster: RosterPlayer[]
@@ -254,6 +445,7 @@ function PitcherRow({
   allPitcherGameStats: Record<string, PitcherGameStats>
   /** 登板中投手の現在の投球数 */
   currentPitchCount: number
+  onOpenGameStats: () => void
 }) {
   const pitchers = sortedRoster(roster)
     .filter((r) => r.positionCategory === '投手')
@@ -360,34 +552,28 @@ function PitcherRow({
       </div>
     )}
     {showStats && (
-      <div className="flex items-center gap-1 pl-5">
-        <input
-          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-          placeholder="自責点"
-          value={player.earnedRuns || ''}
-          onChange={(e) => onChange({ ...player, earnedRuns: e.target.value })}
-        />
-        <input
-          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-          placeholder="与四球"
-          value={player.walksAllowed || ''}
-          onChange={(e) => onChange({ ...player, walksAllowed: e.target.value })}
-        />
-        <input
-          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-          placeholder="被安打"
-          value={player.hitsAllowed || ''}
-          onChange={(e) => onChange({ ...player, hitsAllowed: e.target.value })}
-        />
-        <input
-          className="bg-gray-700/60 text-white rounded px-1 py-0.5 text-xs w-14 shrink-0"
-          placeholder="投球回"
-          value={player.inningsPitched || ''}
-          onChange={(e) => onChange({ ...player, inningsPitched: e.target.value })}
-        />
+      <div className="flex items-center gap-1 pl-5 flex-wrap">
+        <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs shrink-0 text-center">
+          防{computeLiveEra(player, gameStats) ?? player.era ?? '---'}
+        </span>
+        <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs shrink-0 text-center">
+          W{computeLiveWhip(player, gameStats) ?? player.whip ?? '---'}
+        </span>
+        <button
+          onClick={onOpenGameStats}
+          className="bg-gray-600 hover:bg-gray-500 text-gray-200 rounded px-2 py-0.5 text-xs shrink-0"
+          title="この試合の投手成績を編集"
+        >
+          成績編集
+        </button>
+        {gameStats && (
+          <span className="text-green-400 text-xs font-mono">
+            {formatPitcherGameSummary(gameStats)}
+          </span>
+        )}
       </div>
     )}
-    {gameStats && (
+    {!showStats && gameStats && (
       <div className="flex items-center gap-1 pl-5">
         <span className="text-green-400 text-xs font-mono">
           📊 {formatPitcherGameSummary(gameStats)}
@@ -433,6 +619,10 @@ function PitcherRow({
 function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const [csvError, setCsvError] = useState<string | null>(null)
   const [showStats, setShowStats] = useState(false)
+  /** 打者の試合内成績編集モーダル対象: lineup index */
+  const [editBatterStatsIdx, setEditBatterStatsIdx] = useState<number | null>(null)
+  /** 投手の試合内成績編集モーダルを開くか */
+  const [editPitcherStats, setEditPitcherStats] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const rosterFileRef = useRef<HTMLInputElement>(null)
 
@@ -764,6 +954,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
               onScoreNoRBI={() => scoreRunnerNoRBI(idx)}
               onScoreUnearned={() => scoreRunnerUnearned(idx)}
               showStats={showStats}
+              onOpenGameStats={() => setEditBatterStatsIdx(idx)}
             />
           )
         })}
@@ -796,9 +987,30 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             allPitcherStats={pitcherStats}
             allPitcherGameStats={pitcherGameStats}
             currentPitchCount={pitchCount}
+            onOpenGameStats={() => setEditPitcherStats(true)}
           />
         )
       })()}
+
+      {/* 打者の試合内成績編集モーダル */}
+      {editBatterStatsIdx !== null && lineup[editBatterStatsIdx] && (
+        <BatterGameStatsModal
+          player={lineup[editBatterStatsIdx]!}
+          team={side}
+          index={editBatterStatsIdx}
+          onClose={() => setEditBatterStatsIdx(null)}
+        />
+      )}
+
+      {/* 投手の試合内成績編集モーダル */}
+      {editPitcherStats && lineup[9] && (
+        <PitcherGameStatsModal
+          player={lineup[9]!}
+          pitcherKey={`${side}-${lineup[9]!.number}`}
+          currentStats={lineup[9]!.number ? (pitcherGameStats[`${side}-${lineup[9]!.number}`] ?? { ...defaultPitcherGameStats }) : { ...defaultPitcherGameStats }}
+          onClose={() => setEditPitcherStats(false)}
+        />
+      )}
     </div>
   )
 }

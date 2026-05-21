@@ -126,6 +126,16 @@ export interface LineupPlayer {
   groundedIntoDoublePlays?: string
   sluggingPct?: string
   onBasePct?: string
+  // 打者用 試合内成績（全部0スタートで手動編集可能）
+  gameAtBats?: number       // 打数
+  gameWalks?: number        // 四球
+  gameHitByPitch?: number   // 死球
+  gameSacFlies?: number     // 犠飛
+  gameSacBunts?: number     // 犠打
+  gameSingles?: number      // 単打
+  gameDoubles?: number      // 二塁打
+  gameTriples?: number      // 三塁打
+  gameHomeRuns?: number     // 本塁打
   // 投手用（10番目）
   appearances?: string  // 登板数
   record?: string       // 勝敗（後方互換）
@@ -175,6 +185,8 @@ export interface PitcherGameStats {
   runsAllowed: number
   earnedRunsAllowed: number
   outsRecorded: number
+  /** 投球数（試合内成績として手動編集可能） */
+  pitchCount?: number
 }
 
 export const defaultPitcherGameStats: PitcherGameStats = {
@@ -183,6 +195,7 @@ export const defaultPitcherGameStats: PitcherGameStats = {
   runsAllowed: 0,
   earnedRunsAllowed: 0,
   outsRecorded: 0,
+  pitchCount: 0,
 }
 
 /** 投手の登板履歴エントリ */
@@ -360,6 +373,71 @@ export function formatPitcherRecord(player: {
   if (h > 0) parts.push(`${h}H`)
   if (s > 0) parts.push(`${s}S`)
   return parts.join('/')
+}
+
+// ─────────────────────────────────────────────
+// ライブ成績計算ユーティリティ（通算 + 試合内合算）
+// ─────────────────────────────────────────────
+
+function _numVal(v: string | undefined | number): number {
+  return Number(v) || 0
+}
+
+function _fmtRate(val: number): string {
+  if (isNaN(val) || !isFinite(val)) return '.000'
+  if (val >= 1) return val.toFixed(3)
+  return val.toFixed(3).replace(/^0/, '')
+}
+
+/**
+ * シーズン通算成績＋試合内成績（game*フィールド）を合算して
+ * 打率・出塁率・長打率・OPS を再計算する。
+ *
+ * - 試合内成績が全て 0/undefined の場合はシーズン成績のみで計算
+ * - atBats 等の詳細フィールドがない場合は試合成績のみで計算
+ * - どちらも 0 の場合は元の battingAvg を保持（'.000' にしない）
+ */
+export function computeLiveBattingStats(player: LineupPlayer): {
+  battingAvg: string
+  onBasePct: string
+  sluggingPct: string
+  ops: string
+} {
+  const seasonAB  = _numVal(player.atBats)
+  const seasonH   = _numVal(player.hits)
+  const seasonBB  = _numVal(player.walks)
+  const seasonHBP = _numVal(player.hitByPitch)
+  const seasonSF  = _numVal(player.sacrificeFlies)
+  const seasonTB  = _numVal(player.totalBases)
+
+  const gameSingles = player.gameSingles ?? 0
+  const gameDoubles = player.gameDoubles ?? 0
+  const gameTriples = player.gameTriples ?? 0
+  const gameHR      = player.gameHomeRuns ?? 0
+  const gameHits    = gameSingles + gameDoubles + gameTriples + gameHR
+  const gameTB      = gameSingles + gameDoubles * 2 + gameTriples * 3 + gameHR * 4
+
+  const totalAB  = seasonAB  + (player.gameAtBats    ?? 0)
+  const totalH   = seasonH   + gameHits
+  const totalBB  = seasonBB  + (player.gameWalks     ?? 0)
+  const totalHBP = seasonHBP + (player.gameHitByPitch ?? 0)
+  const totalSF  = seasonSF  + (player.gameSacFlies  ?? 0)
+  const totalTB  = seasonTB  + gameTB
+
+  // 打数が 0 のときは元の battingAvg を保持（未登録選手などへの配慮）
+  const battingAvg = totalAB > 0
+    ? _fmtRate(totalH / totalAB)
+    : (player.battingAvg ?? '.000')
+
+  const obpDenom = totalAB + totalBB + totalHBP + totalSF
+  const obpVal   = obpDenom > 0 ? (totalH + totalBB + totalHBP) / obpDenom : 0
+  const onBasePct   = _fmtRate(obpVal)
+
+  const slgVal      = totalAB > 0 ? totalTB / totalAB : 0
+  const sluggingPct = _fmtRate(slgVal)
+  const ops         = _fmtRate(obpVal + slgVal)
+
+  return { battingAvg, onBasePct, sluggingPct, ops }
 }
 
 /**

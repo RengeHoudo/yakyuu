@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
-import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats } from '../types'
+import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 
@@ -59,7 +59,7 @@ function formatRate(val: number): string {
   return val.toFixed(3).replace(/^0/, '')
 }
 
-/** 成績から打率・長打率・出塁率・OPSを再計算する */
+/** 成績から打率・長打率・出塁率・OPSを再計算する（後方互換用） */
 export function recalcBattingStats(player: LineupPlayer): Partial<LineupPlayer> {
   const atBats = numStat(player.atBats)
   const hits = numStat(player.hits)
@@ -78,6 +78,23 @@ export function recalcBattingStats(player: LineupPlayer): Partial<LineupPlayer> 
 
   return { battingAvg, onBasePct, sluggingPct, ops }
 }
+
+/** 打撃統計フィールド → game* フィールドのマッピング */
+const STAT_TO_GAME_FIELD: Partial<Record<string, keyof LineupPlayer>> = {
+  atBats:         'gameAtBats',
+  walks:          'gameWalks',
+  hitByPitch:     'gameHitByPitch',
+  sacrificeFlies: 'gameSacFlies',
+  doubles:        'gameDoubles',
+  triples:        'gameTriples',
+  homeRuns:       'gameHomeRuns',
+}
+
+/** シーズン文字列を直接変更せず game* で管理するフィールド群 */
+const AVG_RELEVANT_FIELDS = new Set([
+  'atBats', 'hits', 'totalBases', 'walks', 'hitByPitch',
+  'sacrificeFlies', 'doubles', 'triples', 'homeRuns',
+])
 
 /** 現在の投手の試合中成績を更新する */
 function updatePitcherGameStatsPatch(
@@ -139,10 +156,25 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
   const batterIdx = s[idxKey]
   const lineup = [...s[key]]
   const player = { ...lineup[batterIdx]! }
+
   for (const [k, increment] of Object.entries(patch)) {
-    ;(player as any)[k] = String(numStat((player as any)[k]) + increment)
+    const gameField = STAT_TO_GAME_FIELD[k]
+    if (gameField) {
+      // 平均計算に使うフィールドは game* に積算（シーズン文字列は不変）
+      ;(player as any)[gameField] = ((player as any)[gameField] ?? 0) + increment
+    } else if (!AVG_RELEVANT_FIELDS.has(k)) {
+      // rbi, plateAppearances, strikeouts, intentionalWalks 等はシーズン文字列を更新
+      ;(player as any)[k] = String(numStat((player as any)[k]) + increment)
+    }
+    // totalBases は game* ヒットフィールドから算出するためスキップ
   }
-  Object.assign(player, recalcBattingStats(player))
+
+  // 単打: hits がありかつ doubles/triples/homeRuns がない場合 → gameSingles に積算
+  if ((patch.hits ?? 0) > 0 && !patch.doubles && !patch.triples && !patch.homeRuns) {
+    player.gameSingles = (player.gameSingles ?? 0) + (patch.hits ?? 0)
+  }
+
+  Object.assign(player, computeLiveBattingStats(player))
   lineup[batterIdx] = player
   return { [key]: lineup }
 }
@@ -275,7 +307,7 @@ function addRBIToBatter(s: GameState, batterIndex: number, count: number = 1): P
   const lineup = [...s[key]]
   const player = { ...lineup[batterIndex]! }
   player.rbi = String(numStat(player.rbi) + count)
-  Object.assign(player, recalcBattingStats(player))
+  Object.assign(player, computeLiveBattingStats(player))
   lineup[batterIndex] = player
   return { [key]: lineup }
 }
@@ -357,6 +389,20 @@ interface GameActions {
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
   /** NPBスコアページURLをセットする */
   setScoreUrl: (url: string) => void
+  /** 打者の試合内成績を直接セット（0から編集可能） */
+  setLineupPlayerGameStats: (team: 'away' | 'home', index: number, stats: {
+    gameAtBats: number
+    gameWalks: number
+    gameHitByPitch: number
+    gameSacFlies: number
+    gameSacBunts: number
+    gameSingles: number
+    gameDoubles: number
+    gameTriples: number
+    gameHomeRuns: number
+  }) => void
+  /** 投手の試合内成績を直接セット */
+  setPitcherGameStats: (key: string, stats: PitcherGameStats) => void
   /** 直前の状態に戻す */
   undo: () => void
   /** undo 履歴件数（0 = undo 不可） */
@@ -1292,6 +1338,33 @@ export const useGameStore = create<GameStore>()(
         set({ overlayScale: Math.max(0.5, Math.min(3, scale)) }),
 
       setLineupDisplayTeam: (team) => set({ lineupDisplayTeam: team }),
+
+      setLineupPlayerGameStats: (team, index, stats) =>
+        set((s) => {
+          const key = team === 'away' ? 'awayLineup' : 'homeLineup'
+          const lineup = [...s[key]]
+          const player = {
+            ...lineup[index]!,
+            gameAtBats:     stats.gameAtBats,
+            gameWalks:      stats.gameWalks,
+            gameHitByPitch: stats.gameHitByPitch,
+            gameSacFlies:   stats.gameSacFlies,
+            gameSacBunts:   stats.gameSacBunts,
+            gameSingles:    stats.gameSingles,
+            gameDoubles:    stats.gameDoubles,
+            gameTriples:    stats.gameTriples,
+            gameHomeRuns:   stats.gameHomeRuns,
+          }
+          // 通算成績＋試合内成績を合算して打率・OPS・出塁率・長打率を再計算
+          Object.assign(player, computeLiveBattingStats(player))
+          lineup[index] = player
+          return { [key]: lineup }
+        }),
+
+      setPitcherGameStats: (key, stats) =>
+        set((s) => ({
+          pitcherGameStats: { ...s.pitcherGameStats, [key]: stats },
+        })),
 
       undo: () => {
         if (_undoHistory.length === 0) return

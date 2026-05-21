@@ -2981,102 +2981,97 @@ describe('打者成績自動更新', () => {
     })
   })
 
-  it('recordSingle: PA+1, AB+1, hits+1, totalBases+1', () => {
+  it('recordSingle: PA+1, game*単打+1', () => {
     s().recordSingle()
     const batter = s().awayLineup[0]!
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats)).toBe(1)
-    expect(Number(batter.hits)).toBe(1)
-    expect(Number(batter.totalBases)).toBe(1)
+    expect(batter.gameAtBats).toBe(1)
+    expect(batter.gameSingles).toBe(1)
     expect(batter.battingAvg).toBe('1.000')
   })
 
-  it('recordDouble: doubles+1, totalBases+2', () => {
+  it('recordDouble: gameDoubles+1', () => {
     s().recordDouble()
     const batter = s().awayLineup[0]!
-    expect(Number(batter.doubles)).toBe(1)
-    expect(Number(batter.totalBases)).toBe(2)
+    expect(batter.gameAtBats).toBe(1)
+    expect(batter.gameDoubles).toBe(1)
   })
 
-  it('recordTriple: triples+1, totalBases+3', () => {
+  it('recordTriple: gameTriples+1', () => {
     s().recordTriple()
     const batter = s().awayLineup[0]!
-    expect(Number(batter.triples)).toBe(1)
-    expect(Number(batter.totalBases)).toBe(3)
+    expect(batter.gameAtBats).toBe(1)
+    expect(batter.gameTriples).toBe(1)
   })
 
-  it('recordHomeRun: homeRuns+1, totalBases+4', () => {
-    const prevHR = Number(s().awayLineup[0]!.homeRuns) || 0
+  it('recordHomeRun: gameHomeRuns+1, rbi+1（シーズン文字列）', () => {
     const prevRBI = Number(s().awayLineup[0]!.rbi) || 0
     s().recordHomeRun()
     const batter = s().awayLineup[0]!
-    expect(Number(batter.homeRuns)).toBe(prevHR + 1)
-    expect(Number(batter.totalBases)).toBe(4)
+    expect(batter.gameAtBats).toBe(1)
+    expect(batter.gameHomeRuns).toBe(1)
     expect(Number(batter.rbi)).toBe(prevRBI + 1) // solo HR = 1 RBI
   })
 
-  it('recordWalk: PA+1, walks+1, AB NOT incremented', () => {
-    const prevAB = Number(s().awayLineup[0]!.atBats) || 0
+  it('recordWalk: PA+1, gameWalks+1, gameAB NOT incremented', () => {
     s().recordWalk()
     const batter = s().awayLineup[0]!
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.walks)).toBe(1)
-    expect(Number(batter.atBats) || 0).toBe(prevAB)
+    expect(batter.gameWalks).toBe(1)
+    expect(batter.gameAtBats ?? 0).toBe(0)
   })
 
-  it('recordIntentionalWalk: intentionalWalks+1, walks+1', () => {
+  it('recordIntentionalWalk: intentionalWalks+1（文字列）, gameWalks+1', () => {
     s().recordIntentionalWalk()
     const batter = s().awayLineup[0]!
     expect(Number(batter.intentionalWalks)).toBe(1)
-    expect(Number(batter.walks)).toBe(1)
+    expect(batter.gameWalks).toBe(1)
   })
 
-  it('recordGroundout: PA+1, AB+1', () => {
+  it('recordGroundout: PA+1, gameAtBats+1', () => {
     s().recordGroundout()
     const batter = s().awayLineup[0]!
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats)).toBe(1)
+    expect(batter.gameAtBats).toBe(1)
     expect(batter.battingAvg).toBe('.000')
   })
 
-  it('addStrike x3 (三振): strikeouts+1, PA+1, AB+1', () => {
+  it('addStrike x3 (三振): strikeouts+1, PA+1, gameAtBats+1', () => {
     s().addStrike()
     s().addStrike()
     s().addStrike()
     const batter = s().awayLineup[0]!
     expect(Number(batter.strikeouts)).toBe(1)
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats)).toBe(1)
+    expect(batter.gameAtBats).toBe(1)
   })
 
-  it('recordSacrificeBunt: sacrificeHits+1, PA+1, AB NOT incremented', () => {
-    const prevAB = Number(s().awayLineup[0]!.atBats) || 0
+  it('recordSacrificeBunt: sacrificeHits+1（文字列）, PA+1, gameAB NOT incremented', () => {
     s().recordSacrificeBunt()
     const batter = s().awayLineup[0]!
     expect(Number(batter.sacrificeHits)).toBe(1)
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats) || 0).toBe(prevAB)
+    expect(batter.gameAtBats ?? 0).toBe(0)
   })
 
-  it('recordSacrificeFly: sacrificeFlies+1, PA+1, AB NOT incremented', () => {
-    const prevAB = Number(s().awayLineup[0]!.atBats) || 0
+  it('recordSacrificeFly: gameSacFlies+1, PA+1, gameAB NOT incremented', () => {
     useGameStore.setState({
       runners: { first: false, second: false, third: true },
       runnerIndices: { first: null, second: null, third: 5 },
     })
     s().recordSacrificeFly()
     const batter = s().awayLineup[0]!
-    expect(Number(batter.sacrificeFlies)).toBe(1)
+    expect(batter.gameSacFlies).toBe(1)
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats) || 0).toBe(prevAB)
+    expect(batter.gameAtBats ?? 0).toBe(0)
   })
 
-  it('recordUncaughtThirdStrike: strikeouts+1, PA+1, AB+1', () => {
+  it('recordUncaughtThirdStrike: strikeouts+1, PA+1, gameAtBats+1', () => {
     s().recordUncaughtThirdStrike()
     const batter = s().awayLineup[0]!
     expect(Number(batter.strikeouts)).toBe(1)
     expect(Number(batter.plateAppearances)).toBe(1)
-    expect(Number(batter.atBats)).toBe(1)
+    expect(batter.gameAtBats).toBe(1)
   })
 })
 
