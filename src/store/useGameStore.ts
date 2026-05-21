@@ -85,6 +85,7 @@ const STAT_TO_GAME_FIELD: Partial<Record<string, keyof LineupPlayer>> = {
   walks:          'gameWalks',
   hitByPitch:     'gameHitByPitch',
   sacrificeFlies: 'gameSacFlies',
+  sacrificeHits:  'gameSacBunts',
   doubles:        'gameDoubles',
   triples:        'gameTriples',
   homeRuns:       'gameHomeRuns',
@@ -93,7 +94,7 @@ const STAT_TO_GAME_FIELD: Partial<Record<string, keyof LineupPlayer>> = {
 /** シーズン文字列を直接変更せず game* で管理するフィールド群 */
 const AVG_RELEVANT_FIELDS = new Set([
   'atBats', 'hits', 'totalBases', 'walks', 'hitByPitch',
-  'sacrificeFlies', 'doubles', 'triples', 'homeRuns',
+  'sacrificeFlies', 'sacrificeHits', 'doubles', 'triples', 'homeRuns',
 ])
 
 /** 現在の投手の試合中成績を更新する */
@@ -334,6 +335,9 @@ interface GameActions {
   recordIntentionalWalk: () => void
   recordGroundout: () => void
   recordFlyout: () => void
+  recordForceOut: () => void
+  recordFieldersChoice: () => void
+  recordSacrificeBuntFC: () => void
   recordDoublePlay: () => void
   recordTriplePlay: () => void
   recordSacrificeBunt: () => void
@@ -867,6 +871,99 @@ export const useGameStore = create<GameStore>()(
 
       recordGroundout: () => set((s) => applyOutPlay(s, 1)),
       recordFlyout: () => set((s) => applyOutPlay(s, 1)),
+
+      recordForceOut: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
+
+          // 打者が一塁に進む（既存の一塁走者は封殺でアウト → newRI.first を上書きで除去）
+          const newRI = { ...s.runnerIndices, first: currentBatterIdx }
+          const newRunners = { ...s.runners, first: true }
+          const newRRP = { ...s.runnerResponsiblePitcher, first: currentPitcherKey }
+
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            atBats: 1,
+          })
+          const pgsPatch = updatePitcherGameStatsPatch(s, { outsRecorded: 1 })
+          const newOuts = s.count.outs + 1
+          const sWithPitch: GameState = { ...extractGameState(s), pitchCount: s.pitchCount + 1 }
+
+          if (newOuts >= 3) {
+            return {
+              ...statPatch,
+              runners: newRunners,
+              runnerIndices: newRI,
+              runnerResponsiblePitcher: newRRP,
+              ...advanceBatterPatch(s),
+              ...advanceInningPatch(sWithPitch),
+              ...pgsPatch,
+            }
+          }
+          const sWithOuts: GameState = { ...extractGameState(s), count: { ...s.count, outs: newOuts } }
+          return {
+            ...statPatch,
+            runners: newRunners,
+            runnerIndices: newRI,
+            runnerResponsiblePitcher: newRRP,
+            ...advanceBatterPatch(sWithOuts),
+            ...pgsPatch,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordFieldersChoice: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          // 野選: アウトカウントは増えない。打者→一塁、走者は四球と同じ押し出し
+          const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            atBats: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          const walkResult = applyWalk(s)
+          const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+          const pgsPatch = _walkScoredPitcherKey
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true)
+            : {}
+          return {
+            ...walkPatch,
+            ...statPatch,
+            ...advanceBatterPatch(s),
+            ...pgsPatch,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
+
+      recordSacrificeBuntFC: () =>
+        set((s) => {
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          // 犠野（犠打フィルダースチョイス）: 打数なし・犠打+1・打席+1、アウト増えない、打者→一塁、走者は四球と同じ押し出し
+          const runsScored = s.runners.first && s.runners.second && s.runners.third ? 1 : 0
+          const statPatch = updateBatterStats(s, {
+            plateAppearances: 1,
+            sacrificeHits: 1,
+            ...(runsScored > 0 ? { rbi: runsScored } : {}),
+          })
+          const walkResult = applyWalk(s)
+          const { _walkScoredPitcherKey, ...walkPatch } = walkResult
+          const pgsPatch = _walkScoredPitcherKey
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true)
+            : {}
+          return {
+            ...walkPatch,
+            ...statPatch,
+            ...advanceBatterPatch(s),
+            ...pgsPatch,
+            pitchCount: s.pitchCount + 1,
+            lastBatterIndex: currentBatterIdx,
+          }
+        }),
 
       recordDoublePlay: () =>
         set((s) => {

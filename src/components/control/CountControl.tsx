@@ -22,7 +22,9 @@ export default function CountControl() {
   const recordUncaughtThirdStrike = useGameStore((s) => s.recordUncaughtThirdStrike)
   const recordError = useGameStore((s) => s.recordError)
   const recordGroundout = useGameStore((s) => s.recordGroundout)
-  const recordFlyout = useGameStore((s) => s.recordFlyout)
+  const recordForceOut = useGameStore((s) => s.recordForceOut)
+  const recordFieldersChoice = useGameStore((s) => s.recordFieldersChoice)
+  const recordSacrificeBuntFC = useGameStore((s) => s.recordSacrificeBuntFC)
   const recordSacrificeBunt = useGameStore((s) => s.recordSacrificeBunt)
   const recordSacrificeFly = useGameStore((s) => s.recordSacrificeFly)
   const recordDoublePlay = useGameStore((s) => s.recordDoublePlay)
@@ -211,6 +213,18 @@ export default function CountControl() {
           >
             エラー
           </button>
+          <button
+            onClick={recordFieldersChoice}
+            className="flex-1 bg-teal-700 hover:bg-teal-600 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            野選
+          </button>
+          <button
+            onClick={recordSacrificeBuntFC}
+            className="flex-1 bg-teal-800 hover:bg-teal-700 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            犠野
+          </button>
         </div>
       </div>
 
@@ -222,13 +236,13 @@ export default function CountControl() {
             onClick={recordGroundout}
             className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
           >
-            ゴロ
+            ゴロ/飛/直
           </button>
           <button
-            onClick={recordFlyout}
+            onClick={recordForceOut}
             className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
           >
-            フライ
+            封殺
           </button>
           <button
             onClick={recordSacrificeBunt}

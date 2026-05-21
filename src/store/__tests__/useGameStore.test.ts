@@ -3046,10 +3046,10 @@ describe('打者成績自動更新', () => {
     expect(batter.gameAtBats).toBe(1)
   })
 
-  it('recordSacrificeBunt: sacrificeHits+1（文字列）, PA+1, gameAB NOT incremented', () => {
+  it('recordSacrificeBunt: gameSacBunts+1, PA+1, gameAB NOT incremented', () => {
     s().recordSacrificeBunt()
     const batter = s().awayLineup[0]!
-    expect(Number(batter.sacrificeHits)).toBe(1)
+    expect(batter.gameSacBunts ?? 0).toBe(1)
     expect(Number(batter.plateAppearances)).toBe(1)
     expect(batter.gameAtBats ?? 0).toBe(0)
   })
@@ -3656,5 +3656,323 @@ describe('undo', () => {
     s().undo()
     // undo 後は履歴が空
     expect(s().undoCount).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordForceOut 封殺
+// ─────────────────────────────────────────────
+
+describe('recordForceOut 封殺', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 1, strikes: 2, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('FO-1: out+1', () => {
+    s().recordForceOut()
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('FO-2: 打者が一塁に進む（走者なし）', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: false } })
+    s().recordForceOut()
+    expect(s().runners.first).toBe(true)
+  })
+
+  it('FO-3: 打者は次の打者に移行する', () => {
+    s().recordForceOut()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+
+  it('FO-4: balls=0, strikes=0 にリセット', () => {
+    s().recordForceOut()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('FO-5: pitchCount が +1', () => {
+    s().recordForceOut()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('FO-6: 打数+1（打数算入）', () => {
+    s().recordForceOut()
+    const player = s().awayLineup[0]!
+    expect(player.gameAtBats).toBe(1)
+  })
+
+  it('FO-7: 安打なし', () => {
+    s().recordForceOut()
+    const player = s().awayLineup[0]!
+    expect(player.gameSingles ?? 0).toBe(0)
+  })
+
+  it('FO-8: 一塁走者がいた場合、打者が一塁に入り旧走者は封殺（除去される）', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 2, // 小園が打者
+      currentHalf: 'top',
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 0, second: null, third: null }, // 秋山(idx=0)が一塁
+    })
+    s().recordForceOut()
+    // 打者（小園 idx=2）が一塁に配置される
+    expect(s().runners.first).toBe(true)
+    expect(s().runnerIndices.first).toBe(2)
+    // 秋山は二塁に進んでいない（封殺でアウト）
+    expect(s().runners.second).toBe(false)
+  })
+
+  it('FO-9: 二塁・三塁走者はそのまま残る', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 0, second: 1, third: 2 },
+      runnerResponsiblePitcher: { first: null, second: null, third: null },
+    })
+    s().recordForceOut()
+    // 二塁・三塁走者はそのまま
+    expect(s().runners.second).toBe(true)
+    expect(s().runnerIndices.second).toBe(1)
+    expect(s().runners.third).toBe(true)
+    expect(s().runnerIndices.third).toBe(2)
+    // 打者(idx=3)が一塁に
+    expect(s().runnerIndices.first).toBe(3)
+  })
+
+  it('FO-10: 3アウト → advanceInning', () => {
+    useGameStore.setState({
+      count: { balls: 0, strikes: 0, outs: 2 },
+      awayBatterIndex: 4,
+      currentHalf: 'top',
+    })
+    s().recordForceOut()
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('FO-11: 投手の outsRecorded +1', () => {
+    useGameStore.setState({
+      ...initialGameState,
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      currentHalf: 'top',
+      pitcher: { name: '森下 暢仁', number: '18', stat: '', statLabel: '' },
+      autoChangeEffect: false,
+    })
+    s().recordForceOut()
+    expect(s().pitcherGameStats?.['home-18']?.outsRecorded).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordFieldersChoice 野選
+// ─────────────────────────────────────────────
+
+describe('recordFieldersChoice 野選', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 1, strikes: 2, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('FC-1: アウトカウントは増えない', () => {
+    s().recordFieldersChoice()
+    expect(s().count.outs).toBe(0)
+  })
+
+  it('FC-2: 打者が一塁に進む（走者なし）', () => {
+    s().recordFieldersChoice()
+    expect(s().runners.first).toBe(true)
+  })
+
+  it('FC-3: balls=0, strikes=0 にリセット', () => {
+    s().recordFieldersChoice()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('FC-4: pitchCount が +1', () => {
+    s().recordFieldersChoice()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('FC-5: 打数+1（打数算入）', () => {
+    s().recordFieldersChoice()
+    const player = s().awayLineup[0]!
+    expect(player.gameAtBats).toBe(1)
+  })
+
+  it('FC-6: 安打なし', () => {
+    s().recordFieldersChoice()
+    const player = s().awayLineup[0]!
+    expect(player.gameSingles ?? 0).toBe(0)
+  })
+
+  it('FC-7: 走者なし → 一塁走者がつく', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: false } })
+    s().recordFieldersChoice()
+    expect(s().runners).toEqual({ first: true, second: false, third: false })
+  })
+
+  it('FC-8: 一塁走者あり → 四球と同じ押し出し（一塁走者→二塁）', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 0, second: null, third: null },
+    })
+    s().recordFieldersChoice()
+    expect(s().runners.first).toBe(true)
+    expect(s().runners.second).toBe(true)
+    expect(s().runners.third).toBe(false)
+  })
+
+  it('FC-9: 一二塁走者あり → 一・二・三塁走者がつく', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 0, second: 1, third: null },
+    })
+    s().recordFieldersChoice()
+    expect(s().runners).toEqual({ first: true, second: true, third: true })
+  })
+
+  it('FC-10: 満塁 → 三塁走者が生還して得点', () => {
+    useGameStore.setState({
+      awayBatterIndex: 3,
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 0, second: 1, third: 2 },
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      awayTotal: 0,
+    })
+    s().recordFieldersChoice()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(1)
+    expect(s().awayTotal).toBe(1)
+  })
+
+  it('FC-11: 次の打者に移行する', () => {
+    s().recordFieldersChoice()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
+  })
+})
+
+// ─────────────────────────────────────────────
+// recordSacrificeBuntFC 犠野（犠打フィルダースチョイス）
+// ─────────────────────────────────────────────
+
+describe('recordSacrificeBuntFC 犠野', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      count: { balls: 1, strikes: 0, outs: 0 },
+      pitchCount: 10,
+    })
+  })
+
+  it('SFC-1: アウトカウントは増えない', () => {
+    s().recordSacrificeBuntFC()
+    expect(s().count.outs).toBe(0)
+  })
+
+  it('SFC-2: 打者が一塁に進む（走者なし）', () => {
+    s().recordSacrificeBuntFC()
+    expect(s().runners.first).toBe(true)
+  })
+
+  it('SFC-3: balls=0, strikes=0 にリセット', () => {
+    s().recordSacrificeBuntFC()
+    expect(s().count.balls).toBe(0)
+    expect(s().count.strikes).toBe(0)
+  })
+
+  it('SFC-4: pitchCount が +1', () => {
+    s().recordSacrificeBuntFC()
+    expect(s().pitchCount).toBe(11)
+  })
+
+  it('SFC-5: 打数にカウントされない（gameAtBats は増えない）', () => {
+    s().recordSacrificeBuntFC()
+    const player = s().awayLineup[0]!
+    expect(player.gameAtBats ?? 0).toBe(0)
+  })
+
+  it('SFC-6: 安打なし', () => {
+    s().recordSacrificeBuntFC()
+    const player = s().awayLineup[0]!
+    expect(player.gameSingles ?? 0).toBe(0)
+  })
+
+  it('SFC-7: 打席+1', () => {
+    s().recordSacrificeBuntFC()
+    const player = s().awayLineup[0]!
+    expect(Number(player.plateAppearances ?? 0)).toBe(1)
+  })
+
+  it('SFC-8: 犠打+1 (gameSacBunts)', () => {
+    s().recordSacrificeBuntFC()
+    const player = s().awayLineup[0]!
+    expect(player.gameSacBunts ?? 0).toBe(1)
+  })
+
+  it('SFC-9: 一塁走者あり → 四球と同じ押し出し（一塁走者→二塁）', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 0, second: null, third: null },
+    })
+    s().recordSacrificeBuntFC()
+    expect(s().runners.first).toBe(true)
+    expect(s().runners.second).toBe(true)
+    expect(s().runners.third).toBe(false)
+  })
+
+  it('SFC-10: 一二塁走者あり → 一・二・三塁走者がつく', () => {
+    useGameStore.setState({
+      runners: { first: true, second: true, third: false },
+      runnerIndices: { first: 0, second: 1, third: null },
+    })
+    s().recordSacrificeBuntFC()
+    expect(s().runners).toEqual({ first: true, second: true, third: true })
+  })
+
+  it('SFC-11: 満塁 → 三塁走者が生還して得点', () => {
+    useGameStore.setState({
+      awayBatterIndex: 3,
+      runners: { first: true, second: true, third: true },
+      runnerIndices: { first: 0, second: 1, third: 2 },
+      currentInning: 1,
+      currentHalf: 'top',
+      innings: [{ inning: 1, top: 0, bottom: null }],
+      awayTotal: 0,
+    })
+    s().recordSacrificeBuntFC()
+    const inn1 = s().innings.find((i) => i.inning === 1)
+    expect(inn1?.top).toBe(1)
+    expect(s().awayTotal).toBe(1)
+  })
+
+  it('SFC-12: 次の打者に移行する', () => {
+    s().recordSacrificeBuntFC()
+    expect(s().awayBatterIndex).toBe(1)
+    expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
   })
 })
