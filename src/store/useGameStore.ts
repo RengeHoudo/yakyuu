@@ -1204,7 +1204,29 @@ export const useGameStore = create<GameStore>()(
         set(team === 'away' ? { awayErrors: count } : { homeErrors: count }),
 
       setLineup: (team, lineup) =>
-        set(team === 'away' ? { awayLineup: lineup } : { homeLineup: lineup }),
+        set((s) => {
+          const key = team === 'away' ? 'awayLineup' : 'homeLineup'
+          const GAME_STAT_FIELDS = [
+            'gameAtBats', 'gameWalks', 'gameHitByPitch', 'gameSacFlies',
+            'gameSacBunts', 'gameSingles', 'gameDoubles', 'gameTriples', 'gameHomeRuns',
+          ] as const
+          const processedLineup = lineup.map((player) => {
+            const bKey = player.number ? `${team}-${player.number}` : null
+            const existingBGS: BatterGameStats | null = bKey
+              ? (s.batterGameStats?.[bKey] ?? null)
+              : null
+            const gameStatOverride: Partial<LineupPlayer> = {}
+            for (const field of GAME_STAT_FIELDS) {
+              gameStatOverride[field] = existingBGS
+                ? (existingBGS[field as keyof BatterGameStats] as number)
+                : undefined
+            }
+            const newPlayer = { ...player, ...gameStatOverride }
+            Object.assign(newPlayer, computeLiveBattingStats(newPlayer))
+            return newPlayer
+          })
+          return { [key]: processedLineup }
+        }),
 
       setLineupPlayer: (team, index, player) =>
         set((s) => {
@@ -1281,7 +1303,7 @@ export const useGameStore = create<GameStore>()(
             batter: {
               name: player.name,
               number: player.number,
-              stat: formatBatterStat(player),
+              stat: formatBatterStat(player, s.statDisplaySettings),
               statLabel: '',
             },
           }
@@ -1301,7 +1323,7 @@ export const useGameStore = create<GameStore>()(
             batter: {
               name: player.name,
               number: player.number,
-              stat: formatBatterStat(player),
+              stat: formatBatterStat(player, s.statDisplaySettings),
               statLabel: '',
             },
             count: { ...s.count, balls: 0, strikes: 0 },
@@ -1322,7 +1344,7 @@ export const useGameStore = create<GameStore>()(
             batter: {
               name: player.name,
               number: player.number,
-              stat: formatBatterStat(player),
+              stat: formatBatterStat(player, s.statDisplaySettings),
               statLabel: '',
             },
           }
@@ -1660,7 +1682,7 @@ function advanceBatterPatch(s: GameState): Partial<GameState> {
     batter: {
       name: player?.name || '',
       number: player?.number || '',
-      stat: player?.name ? formatBatterStat(player) : '',
+      stat: player?.name ? formatBatterStat(player, s.statDisplaySettings) : '',
       statLabel: '',
     },
     count: countReset,

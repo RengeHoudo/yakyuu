@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CARP_LINEUP, initialGameState } from '../../types'
+import { CARP_LINEUP, initialGameState, defaultStatDisplaySettings } from '../../types'
 import { useGameStore, clearUndoHistory } from '../useGameStore'
 
 vi.mock('../../lib/sync', () => ({ broadcastState: vi.fn() }))
@@ -638,6 +638,35 @@ describe('selectBatter', () => {
     expect(s().batter.name).toBe('坂倉 将吾')
     expect(s().homeBatterIndex).toBe(3)
   })
+
+  it('statDisplaySettings を反映した stat が batter にセットされる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      statDisplaySettings: {
+        ...defaultStatDisplaySettings,
+        showBattingAvg: true,
+        showHomeRuns: true,
+      },
+    })
+    s().selectBatter('away', 0) // 秋山 翔吾: battingAvg='.278', homeRuns='4'
+    // showHomeRuns=true なので ".278 4本" になるべき
+    expect(s().batter.stat).toBe('.278 4本')
+  })
+
+  it('statDisplaySettings が全OFF のとき stat は空文字', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      statDisplaySettings: {
+        ...defaultStatDisplaySettings,
+        showBattingAvg: false,
+        showHomeRuns: false,
+        showRbi: false,
+        showOps: false,
+      },
+    })
+    s().selectBatter('away', 0)
+    expect(s().batter.stat).toBe('')
+  })
 })
 
 describe('nextBatter', () => {
@@ -676,6 +705,17 @@ describe('nextBatter', () => {
     s().nextBatter()
     expect(s().homeBatterIndex).toBe(4)
   })
+
+  it('statDisplaySettings を反映した stat が batter にセットされる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+    })
+    s().nextBatter() // 1番→2番: 野間 峻祥 battingAvg='.265' homeRuns='3'
+    expect(s().batter.stat).toBe('.265 3本')
+  })
 })
 
 describe('prevBatter', () => {
@@ -697,6 +737,15 @@ describe('prevBatter', () => {
     useGameStore.setState({ awayBatterIndex: 0 })
     s().prevBatter()
     expect(s().awayBatterIndex).toBe(8)
+  })
+
+  it('statDisplaySettings を反映した stat が batter にセットされる', () => {
+    // beforeEach: awayBatterIndex=3 → prevBatter → index=2: 小園 海斗 battingAvg='.291' homeRuns='14'
+    useGameStore.setState({
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+    })
+    s().prevBatter()
+    expect(s().batter.stat).toBe('.291 14本')
   })
 })
 
@@ -930,6 +979,33 @@ describe('setLineup', () => {
   it("home チームの打順を設定できる", () => {
     s().setLineup('home', [...CARP_LINEUP])
     expect(s().homeLineup[3]?.name).toBe('坂倉 将吾')
+  })
+
+  it('新選手に旧選手の game* が混入しない（打順取得シナリオ）', () => {
+    // 秋山が打席に立ち game stats が付いている状態
+    const taintedPlayer = { ...CARP_LINEUP[0]!, name: '森浦 大輔', number: '63', gameAtBats: 4, gameSingles: 2 }
+    const newLineup = [...CARP_LINEUP]
+    newLineup[0] = taintedPlayer
+    // batterGameStats に 森浦 のエントリなし → game* はリセットされるべき
+    useGameStore.setState({ batterGameStats: {} })
+    s().setLineup('away', newLineup)
+    expect(s().awayLineup[0]?.name).toBe('森浦 大輔')
+    expect(s().awayLineup[0]?.gameAtBats).toBeUndefined()
+    expect(s().awayLineup[0]?.gameSingles).toBeUndefined()
+  })
+
+  it('batterGameStats がある選手は game* が復元される', () => {
+    useGameStore.setState({
+      batterGameStats: {
+        'away-63': { gameAtBats: 3, gameSingles: 1, gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0, gameWalks: 1, gameHitByPitch: 0, gameSacFlies: 0, gameSacBunts: 0 },
+      },
+    })
+    const 森浦 = { ...CARP_LINEUP[0]!, name: '森浦 大輔', number: '63' }
+    const newLineup = [...CARP_LINEUP]
+    newLineup[0] = 森浦
+    s().setLineup('away', newLineup)
+    expect(s().awayLineup[0]?.gameAtBats).toBe(3)
+    expect(s().awayLineup[0]?.gameSingles).toBe(1)
   })
 })
 
@@ -1890,6 +1966,16 @@ describe('recordSingle 単打記録', () => {
     useGameStore.setState({ awayLineup: makeEmptyLineup() })
     expect(() => s().recordSingle()).not.toThrow()
     expect(s().awayHits).toBe(1)
+  })
+
+  it('RS-8: recordSingle 後の次打者 batter.stat に statDisplaySettings が反映される', () => {
+    // beforeEach: awayBatterIndex=0 (秋山 翔吾) → recordSingle → index=1 (野間 峻祥)
+    useGameStore.setState({
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+    })
+    s().recordSingle()
+    // 野間 峻祥: battingAvg='.265', homeRuns='3'
+    expect(s().batter.stat).toBe('.265 3本')
   })
 })
 
