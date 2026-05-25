@@ -201,6 +201,231 @@ describe('打順変更・守備位置変更後も試合内成績が維持され�
 })
 
 // ─────────────────────────────────────────────
+// 選手交代時の試合内成績リセット
+// ─────────────────────────────────────────────
+
+describe('選手交代時の試合内成績リセット', () => {
+  it('異なる選手に交代した場合、試合内成績がリセットされる', () => {
+    // まず山田太郎(3番)の試合内成績をセット
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3,
+      gameWalks: 1,
+      gameHitByPitch: 0,
+      gameSacFlies: 0,
+      gameSacBunts: 0,
+      gameSingles: 1,
+      gameDoubles: 1,
+      gameTriples: 0,
+      gameHomeRuns: 0,
+    })
+
+    // 山田太郎から鈴木花子(7番)に交代
+    const newPlayer: LineupPlayer = {
+      order: 1,
+      name: '鈴木 花子',
+      number: '7',
+      position: '右',
+      battingAvg: '.250',
+    }
+    s().setLineupPlayer('away', 0, newPlayer)
+
+    const player = s().awayLineup[0]!
+    expect(player.name).toBe('鈴木 花子')
+    expect(player.number).toBe('7')
+    // 交代後は前の選手の成績がリセットされる
+    expect(player.gameAtBats).toBeUndefined()
+    expect(player.gameWalks).toBeUndefined()
+    expect(player.gameSingles).toBeUndefined()
+    expect(player.gameDoubles).toBeUndefined()
+  })
+
+  it('選手交代後も通算成績（battingAvg等）は新選手のものが使われる', () => {
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3, gameWalks: 0, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 1,
+      gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0,
+    })
+
+    const newPlayer: LineupPlayer = {
+      order: 1,
+      name: '鈴木 花子',
+      number: '7',
+      position: '右',
+      battingAvg: '.350',
+      homeRuns: '5',
+      rbi: '20',
+    }
+    s().setLineupPlayer('away', 0, newPlayer)
+
+    const player = s().awayLineup[0]!
+    // 新選手の通算成績が使われる
+    expect(player.battingAvg).toBe('.350')
+    expect(player.homeRuns).toBe('5')
+    expect(player.rbi).toBe('20')
+  })
+})
+
+// ─────────────────────────────────────────────
+// 同一選手の打順変更時、試合内成績が引き継がれる（batterGameStats で管理）
+// ─────────────────────────────────────────────
+
+describe('同一選手の打順変更時、試合内成績が引き継がれる', () => {
+  it('1番から3番へ打順変更した場合、試合内成績が3番に引き継がれる', () => {
+    // 山田太郎(3番)が1番打者として試合内成績を持つ
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3,
+      gameWalks: 1,
+      gameHitByPitch: 0,
+      gameSacFlies: 0,
+      gameSacBunts: 0,
+      gameSingles: 2,
+      gameDoubles: 0,
+      gameTriples: 0,
+      gameHomeRuns: 0,
+    })
+
+    // 山田太郎を3番打順(index 2)にセット（打順変更）
+    // batterGameStats['away-3'] に成績が保存されているため、
+    // setLineupPlayer が自動的に反映する
+    const playerWithoutGameStats: LineupPlayer = {
+      order: 3,
+      name: '山田 太郎',
+      number: '3',
+      position: '左',
+      battingAvg: '.278',
+    }
+    s().setLineupPlayer('away', 2, playerWithoutGameStats)
+
+    // 3番打順の選手に batterGameStats の試合内成績が反映される
+    const playerAt2 = s().awayLineup[2]!
+    expect(playerAt2.name).toBe('山田 太郎')
+    expect(playerAt2.gameAtBats).toBe(3)
+    expect(playerAt2.gameWalks).toBe(1)
+    expect(playerAt2.gameSingles).toBe(2)
+  })
+
+  it('別の打順に同一選手を配置しても batterGameStats の成績が引き継がれる', () => {
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 2, gameWalks: 0, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 1,
+      gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0,
+    })
+
+    s().setLineupPlayer('away', 4, {
+      order: 5,
+      name: '山田 太郎',
+      number: '3',
+      position: '左',
+      battingAvg: '.278',
+    })
+
+    // index 4 の山田太郎は batterGameStats['away-3'] の成績を持つ
+    const playerAt4 = s().awayLineup[4]!
+    expect(playerAt4.gameAtBats).toBe(2)
+    expect(playerAt4.gameSingles).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
+// batterGameStats: 選手IDに紐づく成績管理
+// ─────────────────────────────────────────────
+
+describe('batterGameStats – 選手IDに紐づく成績管理', () => {
+  it('setLineupPlayerGameStats で batterGameStats["away-3"] が更新される', () => {
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3,
+      gameWalks: 1,
+      gameHitByPitch: 0,
+      gameSacFlies: 0,
+      gameSacBunts: 0,
+      gameSingles: 2,
+      gameDoubles: 0,
+      gameTriples: 0,
+      gameHomeRuns: 0,
+    })
+
+    const bgs = s().batterGameStats?.['away-3']
+    expect(bgs).toBeDefined()
+    expect(bgs!.gameAtBats).toBe(3)
+    expect(bgs!.gameWalks).toBe(1)
+    expect(bgs!.gameSingles).toBe(2)
+  })
+
+  it('setLineupPlayer で batterGameStats の成績が lineup player に反映される', () => {
+    // まず batterGameStats に成績をセット
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 4, gameWalks: 2, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 1,
+      gameDoubles: 1, gameTriples: 0, gameHomeRuns: 0,
+    })
+
+    // 同じ選手を別位置にセットすると batterGameStats が自動反映
+    s().setLineupPlayer('away', 5, {
+      order: 6,
+      name: '山田 太郎',
+      number: '3',
+      position: '中',
+      battingAvg: '.278',
+    })
+
+    const player = s().awayLineup[5]!
+    expect(player.gameAtBats).toBe(4)
+    expect(player.gameWalks).toBe(2)
+    expect(player.gameSingles).toBe(1)
+    expect(player.gameDoubles).toBe(1)
+  })
+
+  it('batterGameStats に成績がない選手を配置すると game* は undefined になる', () => {
+    // 先に山田太郎に成績をセット
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3, gameWalks: 1, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 1,
+      gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0,
+    })
+
+    // 鈴木花子(7番)は batterGameStats に成績なし
+    s().setLineupPlayer('away', 0, {
+      order: 1,
+      name: '鈴木 花子',
+      number: '7',
+      position: '右',
+      battingAvg: '.300',
+    })
+
+    const player = s().awayLineup[0]!
+    expect(player.name).toBe('鈴木 花子')
+    expect(player.gameAtBats).toBeUndefined()
+    expect(player.gameSingles).toBeUndefined()
+    expect(player.gameWalks).toBeUndefined()
+  })
+
+  it('異なるチームの同一背番号は別々に管理される', () => {
+    // away-3 と home-3 は別の選手
+    useGameStore.setState({
+      ...initialGameState,
+      autoChangeEffect: false,
+      pitchCount: 0,
+      awayLineup: [{ ...BATTER, order: 1 }, ...initialGameState.awayLineup.slice(1)],
+      homeLineup: [{ ...BATTER, order: 1 }, ...initialGameState.homeLineup.slice(1)],
+    })
+
+    s().setLineupPlayerGameStats('away', 0, {
+      gameAtBats: 3, gameWalks: 0, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 1,
+      gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0,
+    })
+    s().setLineupPlayerGameStats('home', 0, {
+      gameAtBats: 5, gameWalks: 1, gameHitByPitch: 0,
+      gameSacFlies: 0, gameSacBunts: 0, gameSingles: 2,
+      gameDoubles: 0, gameTriples: 0, gameHomeRuns: 0,
+    })
+
+    expect(s().batterGameStats?.['away-3']?.gameAtBats).toBe(3)
+    expect(s().batterGameStats?.['home-3']?.gameAtBats).toBe(5)
+  })
+})
+
+// ─────────────────────────────────────────────
 // 投手: setPitcherGameStats
 // ─────────────────────────────────────────────
 

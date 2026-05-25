@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
-import { initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats } from '../types'
+import type { BatterGameStats, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
+import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 
@@ -29,6 +29,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
   'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
+  'batterGameStats',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -154,15 +155,24 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
   const isAway = s.currentHalf === 'top'
   const key = isAway ? 'awayLineup' as const : 'homeLineup' as const
   const idxKey = isAway ? 'awayBatterIndex' as const : 'homeBatterIndex' as const
+  const team = isAway ? 'away' : 'home'
   const batterIdx = s[idxKey]
   const lineup = [...s[key]]
   const player = { ...lineup[batterIdx]! }
 
+  // 選手キーで batterGameStats を取得・更新
+  const bKey = player.number ? `${team}-${player.number}` : null
+  const currentBGS: BatterGameStats = bKey
+    ? (s.batterGameStats?.[bKey] ?? { ...defaultBatterGameStats })
+    : { ...defaultBatterGameStats }
+  const newBGS = { ...currentBGS }
+
   for (const [k, increment] of Object.entries(patch)) {
     const gameField = STAT_TO_GAME_FIELD[k]
     if (gameField) {
-      // 平均計算に使うフィールドは game* に積算（シーズン文字列は不変）
-      ;(player as any)[gameField] = ((player as any)[gameField] ?? 0) + increment
+      // batterGameStats（正本）と player.game*（ミラー）の両方を更新
+      ;(newBGS as any)[gameField] = ((newBGS as any)[gameField] ?? 0) + increment
+      ;(player as any)[gameField] = (newBGS as any)[gameField]
     } else if (!AVG_RELEVANT_FIELDS.has(k)) {
       // rbi, plateAppearances, strikeouts, intentionalWalks 等はシーズン文字列を更新
       ;(player as any)[k] = String(numStat((player as any)[k]) + increment)
@@ -172,12 +182,18 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
 
   // 単打: hits がありかつ doubles/triples/homeRuns がない場合 → gameSingles に積算
   if ((patch.hits ?? 0) > 0 && !patch.doubles && !patch.triples && !patch.homeRuns) {
-    player.gameSingles = (player.gameSingles ?? 0) + (patch.hits ?? 0)
+    newBGS.gameSingles = newBGS.gameSingles + (patch.hits ?? 0)
+    player.gameSingles = newBGS.gameSingles
   }
 
   Object.assign(player, computeLiveBattingStats(player))
   lineup[batterIdx] = player
-  return { [key]: lineup }
+
+  const newBatterGameStats = bKey
+    ? { ...(s.batterGameStats ?? {}), [bKey]: newBGS }
+    : (s.batterGameStats ?? {})
+
+  return { [key]: lineup, batterGameStats: newBatterGameStats }
 }
 
 /** 走者進塁を適用し、生還数を返す */
@@ -1192,7 +1208,31 @@ export const useGameStore = create<GameStore>()(
         set((s) => {
           const key = team === 'away' ? 'awayLineup' : 'homeLineup'
           const lineup = [...s[key]]
-          lineup[index] = player
+
+          // batterGameStats（選手キーの正本）から game* を取得して適用
+          // - 成績あり→ lineup player に反映（打順変更でも自動引き継ぎ）
+          // - 成績なし→ game* を undefined にリセット（新規選手交代）
+          const bKey = player.number ? `${team}-${player.number}` : null
+          const existingBGS: BatterGameStats | null = bKey
+            ? (s.batterGameStats?.[bKey] ?? null)
+            : null
+
+          const GAME_STAT_FIELDS = [
+            'gameAtBats', 'gameWalks', 'gameHitByPitch', 'gameSacFlies',
+            'gameSacBunts', 'gameSingles', 'gameDoubles', 'gameTriples', 'gameHomeRuns',
+          ] as const
+
+          const gameStatOverride: Partial<LineupPlayer> = {}
+          for (const field of GAME_STAT_FIELDS) {
+            gameStatOverride[field] = existingBGS
+              ? (existingBGS[field as keyof BatterGameStats] as number)
+              : undefined
+          }
+
+          const newPlayer = { ...player, ...gameStatOverride }
+          Object.assign(newPlayer, computeLiveBattingStats(newPlayer))
+          lineup[index] = newPlayer
+
           return { [key]: lineup }
         }),
 
@@ -1438,10 +1478,12 @@ export const useGameStore = create<GameStore>()(
 
       setLineupPlayerGameStats: (team, index, stats) =>
         set((s) => {
-          const key = team === 'away' ? 'awayLineup' : 'homeLineup'
-          const lineup = [...s[key]]
-          const player = {
-            ...lineup[index]!,
+          const lineupKey = team === 'away' ? 'awayLineup' : 'homeLineup'
+          const lineup = [...s[lineupKey]]
+          const player = { ...lineup[index]! }
+          const bKey = player.number ? `${team}-${player.number}` : null
+
+          const gameStats: BatterGameStats = {
             gameAtBats:     stats.gameAtBats,
             gameWalks:      stats.gameWalks,
             gameHitByPitch: stats.gameHitByPitch,
@@ -1452,10 +1494,19 @@ export const useGameStore = create<GameStore>()(
             gameTriples:    stats.gameTriples,
             gameHomeRuns:   stats.gameHomeRuns,
           }
+
+          // lineup player に反映（ミラー）
+          Object.assign(player, gameStats)
           // 通算成績＋試合内成績を合算して打率・OPS・出塁率・長打率を再計算
           Object.assign(player, computeLiveBattingStats(player))
           lineup[index] = player
-          return { [key]: lineup }
+
+          // batterGameStats（正本）を更新
+          const newBatterGameStats = bKey
+            ? { ...(s.batterGameStats ?? {}), [bKey]: gameStats }
+            : (s.batterGameStats ?? {})
+
+          return { [lineupKey]: lineup, batterGameStats: newBatterGameStats }
         }),
 
       setPitcherGameStats: (key, stats) =>

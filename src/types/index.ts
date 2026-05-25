@@ -178,6 +178,31 @@ export interface PlayLogEntry {
   text: string
 }
 
+/** 打者の試合中成績トラッキング用。キー形式: "${team}-${number}" で GameState.batterGameStats に格納 */
+export interface BatterGameStats {
+  gameAtBats: number
+  gameWalks: number
+  gameHitByPitch: number
+  gameSacFlies: number
+  gameSacBunts: number
+  gameSingles: number
+  gameDoubles: number
+  gameTriples: number
+  gameHomeRuns: number
+}
+
+export const defaultBatterGameStats: BatterGameStats = {
+  gameAtBats: 0,
+  gameWalks: 0,
+  gameHitByPitch: 0,
+  gameSacFlies: 0,
+  gameSacBunts: 0,
+  gameSingles: 0,
+  gameDoubles: 0,
+  gameTriples: 0,
+  gameHomeRuns: 0,
+}
+
 /** 投手の試合中成績トラッキング用 */
 export interface PitcherGameStats {
   hitsAllowed: number
@@ -276,6 +301,8 @@ export interface GameState {
   scoreUrl: string
   /** 投手の登板履歴。試合中に登板した全投手を記録する */
   pitcherHistory: PitcherAppearance[]
+  /** 打者ごとの試合中成績。キー形式: "${team}-${number}" (例: "away-3") */
+  batterGameStats: Record<string, BatterGameStats>
 }
 
 /**
@@ -607,6 +634,7 @@ export const initialGameState: GameState = {
   lineupDisplayTeam: 'away',
   pitcherStats: {},
   pitcherGameStats: {},
+  batterGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
   pitcherHistory: [],
