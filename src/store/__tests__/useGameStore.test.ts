@@ -3672,6 +3672,7 @@ describe('recordForceOut 封殺', () => {
       currentHalf: 'top',
       count: { balls: 1, strikes: 2, outs: 0 },
       pitchCount: 10,
+      runners: { first: true, second: false, third: false },
     })
   })
 
@@ -3680,10 +3681,11 @@ describe('recordForceOut 封殺', () => {
     expect(s().count.outs).toBe(1)
   })
 
-  it('FO-2: 打者が一塁に進む（走者なし）', () => {
-    useGameStore.setState({ runners: { first: false, second: false, third: false } })
+  it('FO-2: 走者がいない場合は何もしない（no-op）', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: false }, count: { balls: 0, strikes: 0, outs: 0 } })
     s().recordForceOut()
-    expect(s().runners.first).toBe(true)
+    expect(s().runners.first).toBe(false)
+    expect(s().count.outs).toBe(0)
   })
 
   it('FO-3: 打者は次の打者に移行する', () => {
@@ -3767,6 +3769,7 @@ describe('recordForceOut 封殺', () => {
       awayLineup: [...CARP_LINEUP],
       homeLineup: [...CARP_LINEUP],
       currentHalf: 'top',
+      runners: { first: true, second: false, third: false },
       pitcher: { name: '森下 暢仁', number: '18', stat: '', statLabel: '' },
       autoChangeEffect: false,
     })

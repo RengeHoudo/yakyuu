@@ -240,7 +240,8 @@ export default function CountControl() {
           </button>
           <button
             onClick={recordForceOut}
-            className="flex-1 bg-red-900 hover:bg-red-800 text-white px-2 py-2 rounded text-sm font-bold"
+            disabled={runnerCount < 1}
+            className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             封殺
           </button>

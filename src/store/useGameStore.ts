@@ -890,6 +890,8 @@ export const useGameStore = create<GameStore>()(
 
       recordForceOut: () =>
         set((s) => {
+          // 走者がいない場合は封殺は成立しないので何もしない
+          if (!s.runners.first && !s.runners.second && !s.runners.third) return s
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
           const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
           const currentPitcherKey = `${defTeam}-${s.pitcher.number}`
