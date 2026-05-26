@@ -646,10 +646,11 @@ describe('selectBatter', () => {
         ...defaultStatDisplaySettings,
         showBattingAvg: true,
         showHomeRuns: true,
+        showOps: false,
       },
     })
     s().selectBatter('away', 0) // 秋山 翔吾: battingAvg='.278', homeRuns='4'
-    // showHomeRuns=true なので ".278 4本" になるべき
+    // showHomeRuns=true, showOps=false なので ".278 4本" になるべき
     expect(s().batter.stat).toBe('.278 4本')
   })
 
@@ -711,7 +712,7 @@ describe('nextBatter', () => {
       awayLineup: [...CARP_LINEUP],
       awayBatterIndex: 0,
       currentHalf: 'top',
-      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true, showOps: false },
     })
     s().nextBatter() // 1番→2番: 野間 峻祥 battingAvg='.265' homeRuns='3'
     expect(s().batter.stat).toBe('.265 3本')
@@ -742,7 +743,7 @@ describe('prevBatter', () => {
   it('statDisplaySettings を反映した stat が batter にセットされる', () => {
     // beforeEach: awayBatterIndex=3 → prevBatter → index=2: 小園 海斗 battingAvg='.291' homeRuns='14'
     useGameStore.setState({
-      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true, showOps: false },
     })
     s().prevBatter()
     expect(s().batter.stat).toBe('.291 14本')
@@ -1971,7 +1972,7 @@ describe('recordSingle 単打記録', () => {
   it('RS-8: recordSingle 後の次打者 batter.stat に statDisplaySettings が反映される', () => {
     // beforeEach: awayBatterIndex=0 (秋山 翔吾) → recordSingle → index=1 (野間 峻祥)
     useGameStore.setState({
-      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true },
+      statDisplaySettings: { ...defaultStatDisplaySettings, showBattingAvg: true, showHomeRuns: true, showOps: false },
     })
     s().recordSingle()
     // 野間 峻祥: battingAvg='.265', homeRuns='3'
@@ -2444,8 +2445,8 @@ describe('statDisplaySettings – 初期状態', () => {
     expect(s().statDisplaySettings.showRbi).toBe(false)
   })
 
-  it('showOps がデフォルト false', () => {
-    expect(s().statDisplaySettings.showOps).toBe(false)
+  it('showOps がデフォルト true', () => {
+    expect(s().statDisplaySettings.showOps).toBe(true)
   })
 
   it('showAppearances がデフォルト false', () => {
@@ -2467,9 +2468,11 @@ describe('setStatDisplaySettings', () => {
     s().setStatDisplaySettings({ showHomeRuns: true })
     expect(s().statDisplaySettings.showBattingAvg).toBe(true)
     expect(s().statDisplaySettings.showRbi).toBe(false)
-    expect(s().statDisplaySettings.showOps).toBe(false)
+    expect(s().statDisplaySettings.showOps).toBe(true)
     expect(s().statDisplaySettings.showAppearances).toBe(false)
     expect(s().statDisplaySettings.showRecord).toBe(false)
+    expect(s().statDisplaySettings.showEra).toBe(true)
+    expect(s().statDisplaySettings.showWhip).toBe(true)
   })
 
   it('全フィールドを一度に更新できる', () => {
@@ -3220,12 +3223,12 @@ describe('statDisplaySettings \u2013 \u65b0\u898f\u30d5\u30a3\u30fc\u30eb\u30c9\
     expect(s().statDisplaySettings.showHolds).toBe(false)
   })
 
-  it('showEra がデフォルト false', () => {
-    expect(s().statDisplaySettings.showEra).toBe(false)
+  it('showEra がデフォルト true', () => {
+    expect(s().statDisplaySettings.showEra).toBe(true)
   })
 
-  it('showWhip がデフォルト false', () => {
-    expect(s().statDisplaySettings.showWhip).toBe(false)
+  it('showWhip がデフォルト true', () => {
+    expect(s().statDisplaySettings.showWhip).toBe(true)
   })
 })
 

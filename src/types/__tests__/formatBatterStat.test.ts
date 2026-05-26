@@ -30,17 +30,34 @@ const EMPTY_STATS_PLAYER: LineupPlayer = {
 // ─────────────────────────────────────────────
 
 describe('formatBatterStat – defaultStatDisplaySettings', () => {
-  it('settings 省略時はデフォルト設定を使う（打率のみON）', () => {
+  it('settings 省略時はデフォルト設定を使う（打率・OPS ON）', () => {
     const result = formatBatterStat(SAMPLE_PLAYER)
-    expect(result).toBe('.278')
+    expect(result).toBe('.278 OPS.735')
   })
 
-  it('defaultStatDisplaySettings: 打率のみ含まれる', () => {
+  it('defaultStatDisplaySettings: 打率と OPS が含まれ HR/打点は含まれない', () => {
     const result = formatBatterStat(SAMPLE_PLAYER, defaultStatDisplaySettings)
-    expect(result).toBe('.278')
+    expect(result).toBe('.278 OPS.735')
     expect(result).not.toContain('本')
     expect(result).not.toContain('打点')
-    expect(result).not.toContain('OPS')
+  })
+
+  it('defaultStatDisplaySettings: showOps が true である', () => {
+    expect(defaultStatDisplaySettings.showOps).toBe(true)
+  })
+
+  it('defaultStatDisplaySettings: showEra が true である', () => {
+    expect(defaultStatDisplaySettings.showEra).toBe(true)
+  })
+
+  it('defaultStatDisplaySettings: showWhip が true である', () => {
+    expect(defaultStatDisplaySettings.showWhip).toBe(true)
+  })
+
+  it('defaultStatDisplaySettings: 打率と OPS が含まれる', () => {
+    const result = formatBatterStat(SAMPLE_PLAYER, defaultStatDisplaySettings)
+    expect(result).toContain('.278')
+    expect(result).toContain('OPS.735')
   })
 })
 
@@ -221,6 +238,13 @@ describe('formatPitcherStat – デフォルト設定', () => {
   it('デフォルト設定では空文字（showAppearances/showRecord ともに false）', () => {
     const result = formatPitcherStat(SAMPLE_PITCHER)
     expect(result).toBe('')
+  })
+
+  it('defaultStatDisplaySettings: ERA/WHIP を持つ投手では防御率と WHIP が含まれる', () => {
+    const pitcher: LineupPlayer = { ...SAMPLE_PITCHER, era: '3.50', whip: '1.25' }
+    const result = formatPitcherStat(pitcher)
+    expect(result).toContain('防御率 3.50')
+    expect(result).toContain('WHIP 1.25')
   })
 })
 

@@ -359,13 +359,13 @@ export const defaultStatDisplaySettings: StatDisplaySettings = {
   showBattingAvg: true,
   showHomeRuns: false,
   showRbi: false,
-  showOps: false,
+  showOps: true,
   showAppearances: false,
   showRecord: false,
   showSaves: false,
   showHolds: false,
-  showEra: false,
-  showWhip: false,
+  showEra: true,
+  showWhip: true,
 }
 
 /**
