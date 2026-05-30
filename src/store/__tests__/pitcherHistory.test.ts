@@ -266,6 +266,83 @@ describe('newGame', () => {
 })
 
 // ─────────────────────────────────────────────
+//  投球数がチームごとに独立して管理される
+// ─────────────────────────────────────────────
+
+describe('pitcherStats — 攻守交代で投球数が混同しない', () => {
+  beforeEach(() => {
+    s().setLineup('home', CARP_LINEUP)  // home = Carp, 投手: 森下 #18
+    s().setLineup('away', HAWKS_LINEUP) // away = Hawks, 投手: 東浜 #14
+    s().selectBatter('home', 9)         // 1回表: home(森下)が先発
+  })
+
+  it('1回表(home守備)と1回裏(away守備)で球数が独立して pitcherStats に保存される', () => {
+    // 1回表: 森下が5球投げる
+    expect(s().pitcher.number).toBe('18')
+    s().addPitch(); s().addPitch(); s().addPitch(); s().addPitch(); s().addPitch()
+    expect(s().pitchCount).toBe(5)
+
+    // 3アウトで攻守交代
+    s().addOut(); s().addOut(); s().addOut()
+
+    // 1回裏: away(東浜)が守備
+    expect(s().currentHalf).toBe('bottom')
+    expect(s().pitcher.number).toBe('14')
+
+    // 森下の球数が正しく保存されている
+    expect(s().pitcherStats['home-18']).toBe(5)
+    // 東浜は初登板なので球数0からスタート
+    expect(s().pitchCount).toBe(0)
+
+    // 1回裏: 東浜が3球投げる
+    s().addPitch(); s().addPitch(); s().addPitch()
+    expect(s().pitchCount).toBe(3)
+
+    // 3アウトで攻守交代
+    s().addOut(); s().addOut(); s().addOut()
+
+    // 2回表: home(森下)が再び守備
+    expect(s().currentHalf).toBe('top')
+    expect(s().currentInning).toBe(2)
+
+    // 森下の球数が5球に復元されている（東浜の3球ではない）
+    expect(s().pitcher.number).toBe('18')
+    expect(s().pitchCount).toBe(5)
+
+    // 東浜の球数は3球として保存されている
+    expect(s().pitcherStats['away-14']).toBe(3)
+  })
+
+  it('2回表に森下が追加で投げると pitcherStats が正しく更新される', () => {
+    // 1回表: 森下10球
+    for (let i = 0; i < 10; i++) s().addPitch()
+    s().addOut(); s().addOut(); s().addOut()
+
+    // 1回裏: 東浜7球
+    for (let i = 0; i < 7; i++) s().addPitch()
+    s().addOut(); s().addOut(); s().addOut()
+
+    // 2回表: 森下の球数は10球に復元
+    expect(s().pitchCount).toBe(10)
+
+    // さらに5球投げる
+    for (let i = 0; i < 5; i++) s().addPitch()
+    expect(s().pitchCount).toBe(15)
+
+    // 2回表終了
+    s().addOut(); s().addOut(); s().addOut()
+
+    // 2回裏: 東浜の球数は7球に復元（森下の15球ではない）
+    expect(s().currentHalf).toBe('bottom')
+    expect(s().pitcher.number).toBe('14')
+    expect(s().pitchCount).toBe(7)
+
+    // 森下の球数は15球として保存
+    expect(s().pitcherStats['home-18']).toBe(15)
+  })
+})
+
+// ─────────────────────────────────────────────
 //  投手の表示ラベル
 // ─────────────────────────────────────────────
 

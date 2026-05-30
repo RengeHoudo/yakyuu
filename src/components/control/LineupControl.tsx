@@ -427,6 +427,7 @@ function PitcherRow({
   allPitcherStats,
   allPitcherGameStats,
   currentPitchCount,
+  currentPitcherKey,
   onOpenGameStats,
 }: {
   player: LineupPlayer
@@ -449,6 +450,8 @@ function PitcherRow({
   allPitcherGameStats: Record<string, PitcherGameStats>
   /** 登板中投手の現在の投球数 */
   currentPitchCount: number
+  /** 現在守備中の投手キー "${team}-${number}" */
+  currentPitcherKey: string
   onOpenGameStats: () => void
 }) {
   const pitchers = sortedRoster(roster)
@@ -590,7 +593,7 @@ function PitcherRow({
       <div className="text-[10px] text-gray-400 px-2 space-y-0.5">
         {teamHistory.map((p) => {
           const key = `${p.team}-${p.number}`
-          const pitchCount = p.isActive ? currentPitchCount : (allPitcherStats[key] ?? 0)
+          const pitchCount = (p.isActive && key === currentPitcherKey) ? currentPitchCount : (allPitcherStats[key] ?? 0)
           const gs = allPitcherGameStats[key]
           const outsRecorded = gs?.outsRecorded ?? 0
           const label = p.order === 0 ? '先発' : `${p.order}番手`
@@ -999,6 +1002,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             allPitcherStats={pitcherStats}
             allPitcherGameStats={pitcherGameStats}
             currentPitchCount={pitchCount}
+            currentPitcherKey={`${currentHalf === 'top' ? 'home' : 'away'}-${pitcher.number}`}
             onOpenGameStats={() => setEditPitcherStats(true)}
           />
         )
