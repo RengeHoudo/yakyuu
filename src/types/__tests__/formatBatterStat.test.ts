@@ -77,6 +77,7 @@ describe('formatBatterStat – 全 OFF', () => {
     showHolds: false,
     showEra: false,
     showWhip: false,
+    showHandedness: false,
   }
 
   it('全設定 OFF の場合は空文字を返す', () => {
@@ -101,8 +102,7 @@ describe('formatBatterStat – 個別フラグ', () => {
       showSaves: false,
       showHolds: false,
       showEra: false,
-      showWhip: false,
-      ...overrides,
+      showWhip: false,      showHandedness: false,      ...overrides,
     }
   }
 
@@ -149,6 +149,7 @@ describe('formatBatterStat – 複数 ON', () => {
       showHolds: false,
       showEra: false,
       showWhip: false,
+      showHandedness: false,
     }
     const result = formatBatterStat(SAMPLE_PLAYER, settings)
     expect(result).toBe('.278 4本 28打点')
@@ -166,6 +167,7 @@ describe('formatBatterStat – 複数 ON', () => {
       showHolds: false,
       showEra: false,
       showWhip: false,
+      showHandedness: false,
     }
     const result = formatBatterStat(SAMPLE_PLAYER, allOn)
     expect(result).toBe('.278 4本 28打点 OPS.735')
@@ -187,7 +189,9 @@ describe('formatBatterStat – 値が空の場合', () => {
       showRecord: true,      showSaves: true,
       showHolds: true,
       showEra: true,
-      showWhip: true,    }
+      showWhip: true,
+      showHandedness: false,
+    }
     const result = formatBatterStat(EMPTY_STATS_PLAYER, allOn)
     expect(result).toBe('')
   })
@@ -208,6 +212,7 @@ describe('formatBatterStat – 値が空の場合', () => {
       showHolds: false,
       showEra: false,
       showWhip: false,
+      showHandedness: false,
     }
     const result = formatBatterStat(player, settings)
     expect(result).toBe('.250')
@@ -260,8 +265,7 @@ describe('formatPitcherStat – 個別フラグ', () => {
       showSaves: false,
       showHolds: false,
       showEra: false,
-      showWhip: false,
-      ...overrides,
+      showWhip: false,      showHandedness: false,      ...overrides,
     }
   }
 
@@ -351,6 +355,7 @@ describe('formatPitcherStat – 拡張フィールド', () => {
       showHolds: false,
       showEra: false,
       showWhip: false,
+      showHandedness: false,
       ...overrides,
     }
   }
@@ -534,7 +539,7 @@ describe('formatPitcherStat – ライブ更新', () => {
     return {
       showBattingAvg: false, showHomeRuns: false, showRbi: false, showOps: false,
       showAppearances: false, showRecord: false, showSaves: false, showHolds: false,
-      showEra: false, showWhip: false,
+      showEra: false, showWhip: false, showHandedness: false,
       ...overrides,
     }
   }
