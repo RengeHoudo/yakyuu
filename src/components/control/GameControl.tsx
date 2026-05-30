@@ -36,6 +36,8 @@ export default function GameControl() {
   const resetOverlayPositions = useGameStore((s) => s.resetOverlayPositions)
   const overlayScale = useGameStore((s) => s.overlayScale ?? 1)
   const setOverlayScale = useGameStore((s) => s.setOverlayScale)
+  const overlayOpacity = useGameStore((s) => s.overlayOpacity ?? 1)
+  const setOverlayOpacity = useGameStore((s) => s.setOverlayOpacity)
   const scoreUrl = useGameStore((s) => s.scoreUrl)
   const setScoreUrl = useGameStore((s) => s.setScoreUrl)
 
@@ -348,6 +350,27 @@ export default function GameControl() {
             className="bg-gray-600 hover:bg-gray-500 text-gray-300 px-2 py-1 rounded text-xs"
           >
             1x
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-sm whitespace-nowrap">不透明度</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={overlayOpacity}
+            onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+            className="flex-1 accent-accent"
+          />
+          <span className="text-white text-sm font-mono w-12 text-right">
+            {Math.round(overlayOpacity * 100)}%
+          </span>
+          <button
+            onClick={() => setOverlayOpacity(1)}
+            className="bg-gray-600 hover:bg-gray-500 text-gray-300 px-2 py-1 rounded text-xs"
+          >
+            100%
           </button>
         </div>
         <div className="flex items-center gap-3">

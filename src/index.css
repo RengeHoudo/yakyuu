@@ -62,6 +62,20 @@ body {
   backdrop-filter: blur(8px);
 }
 
+/* オーバーレイ パネル不透過率（スライダーで制御） */
+.overlay-root .bg-black\/70 { background-color: rgb(0 0 0 / var(--panel-bg-opacity, 0.7)); }
+.overlay-root .bg-black\/80 { background-color: rgb(0 0 0 / var(--panel-bg-opacity, 0.8)); }
+.overlay-root .bg-black\/85 { background-color: rgb(0 0 0 / var(--panel-bg-opacity, 0.85)); }
+.overlay-root .bg-black\/90 { background-color: rgb(0 0 0 / var(--panel-bg-opacity, 0.9)); }
+.overlay-root .bg-gray-900\/95 { background-color: rgb(17 24 39 / var(--panel-bg-opacity, 0.95)); }
+.overlay-root .scoreboard-main {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, var(--panel-bg-opacity, 0.95)) 0%,
+    rgba(5, 10, 20, var(--panel-bg-opacity, 0.95)) 100%
+  );
+}
+
 /* マスコット ふわふわ */
 @keyframes mascot-float {
   0%, 100% { transform: translateY(0); }

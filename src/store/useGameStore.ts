@@ -27,7 +27,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'awayBatterIndex', 'homeBatterIndex', 'playLog',
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
-  'overlayPositions', 'overlayScale', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
+  'overlayPositions', 'overlayScale', 'overlayOpacity', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
   'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
   'batterGameStats',
 ]
@@ -394,6 +394,7 @@ interface GameActions {
   setOverlayPosition: (id: string, pos: OverlayPosition) => void
   resetOverlayPositions: () => void
   setOverlayScale: (scale: number) => void
+  setOverlayOpacity: (opacity: number) => void
   setLineupDisplayTeam: (team: 'away' | 'home') => void
   /** 塁に攻撃チーム打順インデックスをセットする。nullはクリア */
   setRunnerAtBase: (base: keyof RunnerIndices, lineupIndex: number | null) => void
@@ -1378,6 +1379,7 @@ export const useGameStore = create<GameStore>()(
         ...initialGameState,
         overlayPositions: s.overlayPositions,
         overlayScale: s.overlayScale,
+        overlayOpacity: s.overlayOpacity,
       })),
 
       replaceState: (state) => set(state),
@@ -1497,6 +1499,9 @@ export const useGameStore = create<GameStore>()(
 
       setOverlayScale: (scale) =>
         set({ overlayScale: Math.max(0.5, Math.min(3, scale)) }),
+
+      setOverlayOpacity: (opacity) =>
+        set({ overlayOpacity: Math.max(0, Math.min(1, opacity)) }),
 
       setLineupDisplayTeam: (team) => set({ lineupDisplayTeam: team }),
 

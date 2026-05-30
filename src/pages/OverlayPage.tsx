@@ -154,6 +154,13 @@ export default function OverlayPage() {
   }, [])
   const scale = useViewportScale()
   const overlayScale = useGameStore((s) => s.overlayScale ?? 1)
+  const overlayOpacity = useGameStore((s) => s.overlayOpacity ?? 1)
+
+  // パネル背景の不透過率を CSS カスタムプロパティで制御
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    rootRef.current?.style.setProperty('--panel-bg-opacity', String(overlayOpacity))
+  }, [overlayOpacity])
 
   // オーバーレイページでのみスクロールを無効化
   useEffect(() => {
@@ -163,13 +170,14 @@ export default function OverlayPage() {
 
   return (
     <div
+      ref={rootRef}
       style={{
         width: CANVAS_W,
         height: CANVAS_H,
         transform: scale < 1 ? `scale(${scale})` : undefined,
         transformOrigin: 'top left',
       }}
-      className="relative select-none pointer-events-none"
+      className="overlay-root relative select-none pointer-events-none"
     >
       {/* スコアボード（BSO・走者・球数 統合） — 左上 */}
       <DraggableBox id="scoreboard" scale={overlayScale}>

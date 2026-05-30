@@ -904,6 +904,41 @@ describe('setOverlayScale', () => {
 })
 
 // ─────────────────────────────────────────────
+// オーバーレイ不透過率
+// ─────────────────────────────────────────────
+
+describe('setOverlayOpacity', () => {
+  it('初期値は 1 である', () => {
+    expect(s().overlayOpacity ?? 1).toBe(1)
+  })
+
+  it('0 以上 1 以下の値を設定できる', () => {
+    s().setOverlayOpacity(0.5)
+    expect(s().overlayOpacity).toBe(0.5)
+  })
+
+  it('0 未満は 0 にクランプされる', () => {
+    s().setOverlayOpacity(-0.1)
+    expect(s().overlayOpacity).toBe(0)
+  })
+
+  it('1 超は 1 にクランプされる', () => {
+    s().setOverlayOpacity(1.5)
+    expect(s().overlayOpacity).toBe(1)
+  })
+
+  it('0 で完全透明になる', () => {
+    s().setOverlayOpacity(0)
+    expect(s().overlayOpacity).toBe(0)
+  })
+
+  it('1 で完全不透明になる', () => {
+    s().setOverlayOpacity(1)
+    expect(s().overlayOpacity).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
 // lineupDisplayTeam
 // ─────────────────────────────────────────────
 
