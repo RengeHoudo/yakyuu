@@ -322,6 +322,53 @@ export function extractDisplayName(name: string): string {
   return name
 }
 
+/**
+ * チーム内の同姓選手の有無に応じて表示名を決定する。
+ * - 同姓なし: 姓のみ
+ * - 同姓あり: 姓+名先頭1文字
+ * - 姓+名先頭1文字も同じ選手あり: 姓+名先頭2文字
+ * - 外国人 "A.カタカナ" スタイル: カタカナ部分のみ
+ * - スペースなし: そのまま
+ * @param name 対象選手のフルネーム（例: "山本 祐大"）
+ * @param teamNames チーム全員のフルネーム配列
+ */
+export function getDisplayNameInContext(name: string, teamNames: string[]): string {
+  if (!name) return ''
+  // "A.カタカナ" スタイル
+  const alphaKatakanaMatch = name.match(/^[A-Za-z]+\.([\u30A1-\u30FE]+)$/)
+  if (alphaKatakanaMatch) return alphaKatakanaMatch[1]!
+  // スペースなし → そのまま
+  if (!name.includes(' ')) return name
+
+  const [lastName, ...firstParts] = name.split(' ')
+  const firstName = firstParts.join(' ')
+
+  // 自分以外で同姓の選手を探す
+  const sameLastName = teamNames.filter((n) => {
+    if (n === name) return false
+    return n.split(' ')[0] === lastName
+  })
+
+  if (sameLastName.length === 0) return lastName!
+
+  // 同姓あり → 姓+名先頭1文字
+  const display1 = lastName! + firstName.charAt(0)
+
+  // 姓+名先頭1文字も同じ選手がいるか確認
+  const sameDisplay1 = teamNames.filter((n) => {
+    if (n === name) return false
+    const parts = n.split(' ')
+    const ln = parts[0]!
+    const fn = parts.slice(1).join(' ')
+    return ln + fn.charAt(0) === display1
+  })
+
+  if (sameDisplay1.length === 0) return display1
+
+  // 姓+名先頭2文字
+  return lastName! + firstName.slice(0, 2)
+}
+
 export const initialPlayerInfo: PlayerInfo = {
   name: '',
   number: '',

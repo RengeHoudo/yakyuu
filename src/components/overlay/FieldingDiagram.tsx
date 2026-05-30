@@ -1,6 +1,6 @@
 import { useGameStore } from '../../store/useGameStore'
 import type { Position } from '../../types'
-import { extractDisplayName } from '../../types'
+import { getDisplayNameInContext } from '../../types'
 
 /** 表示名を最大4文字に切り詰める */
 function truncate4(name: string): string {
@@ -67,6 +67,9 @@ export default function FieldingDiagram() {
   const defLineup = currentHalf === 'top' ? homeLineup : awayLineup
   const atkLineup = currentHalf === 'top' ? awayLineup : homeLineup
 
+  const defNames = defLineup.map((p) => p.name)
+  const atkNames = atkLineup.map((p) => p.name)
+
   const fielderLabels: LabelProps[] = []
   for (const player of defLineup.slice(0, 10)) {
     if (!player.name || !player.position) continue
@@ -75,7 +78,7 @@ export default function FieldingDiagram() {
     fielderLabels.push({
       x: coords.x,
       y: coords.y,
-      name: truncate4(extractDisplayName(player.name)),
+      name: truncate4(getDisplayNameInContext(player.name, defNames)),
       isDefense: true,
     })
   }
@@ -121,7 +124,7 @@ export default function FieldingDiagram() {
           let name = '走者'
           if (idx !== null) {
             const p = atkLineup[idx]
-            if (p?.name) name = truncate4(extractDisplayName(p.name))
+            if (p?.name) name = truncate4(getDisplayNameInContext(p.name, atkNames))
           }
           const { x, y } = BASE_COORDS[base]
           return (

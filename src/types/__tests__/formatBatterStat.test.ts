@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LineupPlayer, PitcherGameStats, StatDisplaySettings } from '../index'
-import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, formatPitcherGameSummary, parseInningsPitched, computeLiveEra, computeLiveWhip } from '../index'
+import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, formatPitcherGameSummary, parseInningsPitched, computeLiveEra, computeLiveWhip, getDisplayNameInContext } from '../index'
 
 const SAMPLE_PLAYER: LineupPlayer = {
   order: 1,
@@ -612,5 +612,50 @@ describe('formatPitcherGameSummary', () => {
   it('非自責点がある場合は失点も表示', () => {
     const gs: PitcherGameStats = { hitsAllowed: 2, walksAllowed: 0, runsAllowed: 3, earnedRunsAllowed: 1, outsRecorded: 9 }
     expect(formatPitcherGameSummary(gs)).toBe('3回 被安打2 自責1 失点3')
+  })
+})
+
+// ─────────────────────────────────────────────
+// getDisplayNameInContext
+// ─────────────────────────────────────────────
+
+describe('getDisplayNameInContext', () => {
+  it('空文字は空文字を返す', () => {
+    expect(getDisplayNameInContext('', [])).toBe('')
+  })
+
+  it('同姓なし → 姓のみ', () => {
+    const team = ['山本 祐大', '田中 将大', '鈴木 誠也']
+    expect(getDisplayNameInContext('山本 祐大', team)).toBe('山本')
+  })
+
+  it('同姓あり → 姓+名先頭1文字', () => {
+    const team = ['山本 祐大', '山本 恵大', '田中 将大']
+    expect(getDisplayNameInContext('山本 祐大', team)).toBe('山本祐')
+    expect(getDisplayNameInContext('山本 恵大', team)).toBe('山本恵')
+  })
+
+  it('姓+名先頭1文字も同じ → 姓+名先頭2文字', () => {
+    const team = ['山本 祐大', '山本 祐太', '田中 将大']
+    expect(getDisplayNameInContext('山本 祐大', team)).toBe('山本祐大')
+    expect(getDisplayNameInContext('山本 祐太', team)).toBe('山本祐太')
+  })
+
+  it('外国人選手 "A.カタカナ" スタイル → カタカナ部分のみ', () => {
+    const team = ['S.サンタナ', '山本 祐大']
+    expect(getDisplayNameInContext('S.サンタナ', team)).toBe('サンタナ')
+  })
+
+  it('スペースなし（カタカナ名） → そのまま返す', () => {
+    const team = ['マクブルーム', '山本 祐大']
+    expect(getDisplayNameInContext('マクブルーム', team)).toBe('マクブルーム')
+  })
+
+  it('チームに自分しかいない → 姓のみ', () => {
+    expect(getDisplayNameInContext('山本 祐大', ['山本 祐大'])).toBe('山本')
+  })
+
+  it('teamNamesが空配列でも動作する', () => {
+    expect(getDisplayNameInContext('山本 祐大', [])).toBe('山本')
   })
 })
