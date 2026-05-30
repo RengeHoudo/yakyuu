@@ -195,14 +195,24 @@ function PitcherGameStatsModal({
 
 const POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '左', '中', '右', 'DH', '代']
 
-const CATEGORY_ORDER: PositionCategory[] = ['投手', '捕手', '内野手', '外野手']
 const CATEGORY_SHORT: Record<PositionCategory, string> = {
   投手: '投', 捕手: '捕', 内野手: '内', 外野手: '外',
 }
 
-function sortedRoster(roster: RosterPlayer[]): RosterPlayer[] {
+/** ドロップダウン選択肢のラベルをフォーマットする: `{投|捕|内|外}: {名前}  [ {背番号} ]` */
+export function formatRosterOptionLabel(category: PositionCategory, name: string, number: string): string {
+  return `${CATEGORY_SHORT[category]}: ${name}  [ ${number} ]`
+}
+
+/** 背番号をソート用数値に変換: "00" → -1, "0" → 0, その他 → parseInt */
+function numberSortKey(num: string): number {
+  if (num === '00') return -1
+  return parseInt(num, 10) || 0
+}
+
+export function sortedRoster(roster: RosterPlayer[]): RosterPlayer[] {
   return [...roster].sort(
-    (a, b) => CATEGORY_ORDER.indexOf(a.positionCategory) - CATEGORY_ORDER.indexOf(b.positionCategory),
+    (a, b) => numberSortKey(a.number) - numberSortKey(b.number),
   )
 }
 
@@ -298,7 +308,7 @@ function BatterRow({
             <option value="">{player.name || '-- 選手を選択 --'}</option>
             {sorted.map((r) => (
               <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
-                {CATEGORY_SHORT[r.positionCategory]}: {r.name}
+                {formatRosterOptionLabel(r.positionCategory, r.name, r.number)}
               </option>
             ))}
           </select>
@@ -513,7 +523,7 @@ function PitcherRow({
           <option value="">{player.name || '-- 投手を選択 --'}</option>
           {pitchers.map((r) => (
             <option key={`${r.number}__${r.name}`} value={`${r.number}__${r.name}`}>
-              投: {r.name}
+              {formatRosterOptionLabel(r.positionCategory, r.name, r.number)}
             </option>
           ))}
         </select>
