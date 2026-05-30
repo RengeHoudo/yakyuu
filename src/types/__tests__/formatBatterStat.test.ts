@@ -659,3 +659,105 @@ describe('getDisplayNameInContext', () => {
     expect(getDisplayNameInContext('山本 祐大', [])).toBe('山本')
   })
 })
+
+// ─────────────────────────────────────────────
+// showHandedness（左右表示）
+// ─────────────────────────────────────────────
+
+describe('formatBatterStat – showHandedness', () => {
+  const makeSettings = (overrides: Partial<StatDisplaySettings>): StatDisplaySettings => ({
+    ...defaultStatDisplaySettings,
+    ...overrides,
+  })
+
+  it('batHand L + showHandedness true → [L] が先頭に付く', () => {
+    const player = { ...SAMPLE_PLAYER, batHand: 'L' as const }
+    const result = formatBatterStat(player, makeSettings({ showHandedness: true }))
+    expect(result).toMatch(/^\[L\]/)
+  })
+
+  it('batHand R + showHandedness true → (R) が先頭に付く', () => {
+    const player = { ...SAMPLE_PLAYER, batHand: 'R' as const }
+    const result = formatBatterStat(player, makeSettings({ showHandedness: true }))
+    expect(result).toMatch(/^\(R\)/)
+  })
+
+  it('batHand undefined + showHandedness true → 手指標なし', () => {
+    const result = formatBatterStat(SAMPLE_PLAYER, makeSettings({ showHandedness: true }))
+    expect(result).not.toContain('[L]')
+    expect(result).not.toContain('(R)')
+  })
+
+  it('showHandedness false → batHand があっても表示しない', () => {
+    const player = { ...SAMPLE_PLAYER, batHand: 'L' as const }
+    const result = formatBatterStat(player, makeSettings({ showHandedness: false }))
+    expect(result).not.toContain('[L]')
+    expect(result).not.toContain('(R)')
+  })
+
+  it('表示順: 左右 → 打率 → OPS', () => {
+    const player = { ...SAMPLE_PLAYER, batHand: 'L' as const }
+    const result = formatBatterStat(player, makeSettings({ showHandedness: true, showBattingAvg: true, showOps: true }))
+    expect(result).toBe('[L] .278 OPS.735')
+  })
+
+  it('左右のみ表示（打率・OPS OFF）', () => {
+    const player = { ...SAMPLE_PLAYER, batHand: 'R' as const }
+    const result = formatBatterStat(player, makeSettings({ showHandedness: true, showBattingAvg: false, showOps: false }))
+    expect(result).toBe('(R)')
+  })
+})
+
+describe('formatPitcherStat – showHandedness', () => {
+  const PITCHER: LineupPlayer = {
+    order: 10,
+    name: '森下 暢仁',
+    number: '18',
+    position: '投',
+    era: '2.50',
+    whip: '1.10',
+  }
+  const makeSettings = (overrides: Partial<StatDisplaySettings>): StatDisplaySettings => ({
+    showBattingAvg: false,
+    showHomeRuns: false,
+    showRbi: false,
+    showOps: false,
+    showAppearances: false,
+    showRecord: false,
+    showSaves: false,
+    showHolds: false,
+    showEra: false,
+    showWhip: false,
+    showHandedness: false,
+    ...overrides,
+  })
+
+  it('throwHand L + showHandedness true → [L] が先頭に付く', () => {
+    const player = { ...PITCHER, throwHand: 'L' as const }
+    const result = formatPitcherStat(player, makeSettings({ showHandedness: true }))
+    expect(result).toMatch(/^\[L\]/)
+  })
+
+  it('throwHand R + showHandedness true → (R) が先頭に付く', () => {
+    const player = { ...PITCHER, throwHand: 'R' as const }
+    const result = formatPitcherStat(player, makeSettings({ showHandedness: true }))
+    expect(result).toMatch(/^\(R\)/)
+  })
+
+  it('throwHand undefined + showHandedness true → 手指標なし', () => {
+    const result = formatPitcherStat(PITCHER, makeSettings({ showHandedness: true }))
+    expect(result).toBe('')
+  })
+
+  it('showHandedness false → throwHand があっても表示しない', () => {
+    const player = { ...PITCHER, throwHand: 'L' as const }
+    const result = formatPitcherStat(player, makeSettings({ showHandedness: false }))
+    expect(result).not.toContain('[L]')
+  })
+
+  it('表示順: 左右 → 防御率 → WHIP', () => {
+    const player = { ...PITCHER, throwHand: 'L' as const }
+    const result = formatPitcherStat(player, makeSettings({ showHandedness: true, showEra: true, showWhip: true }))
+    expect(result).toBe('[L] 防御率 2.50 WHIP 1.10')
+  })
+})

@@ -388,6 +388,70 @@ describe('parseNpbPitchingHtml', () => {
 })
 
 // ─────────────────────────────────────────────
+// 投打左右（Handedness）
+// ─────────────────────────────────────────────
+
+describe('parseNpbBattingHtml – batHand', () => {
+  it('半角 * 付きは左打ち（L）として検出される', () => {
+    const row: BattingRow = ['*秋山 翔吾', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.278', '.405', '.330']
+    const html = makeBattingHtml([row])
+    const stats = parseNpbBattingHtml(html).get('秋山翔吾')
+    expect(stats?.batHand).toBe('L')
+  })
+
+  it('全角 ＊ 付きも左打ち（L）として検出される', () => {
+    const row: BattingRow = ['＊小園 海斗', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.291', '.415', '.340']
+    const html = makeBattingHtml([row])
+    const stats = parseNpbBattingHtml(html).get('小園海斗')
+    expect(stats?.batHand).toBe('L')
+  })
+
+  it('* なし選手は右打ち（R）として検出される', () => {
+    const row: BattingRow = ['坂倉 将吾', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.288', '.438', '.350']
+    const html = makeBattingHtml([row])
+    const stats = parseNpbBattingHtml(html).get('坂倉将吾')
+    expect(stats?.batHand).toBe('R')
+  })
+
+  it('左打ちと右打ちが混在する場合も個別に正しく判定される', () => {
+    const rows: BattingRow[] = [
+      ['*秋山 翔吾', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.278', '.405', '.330'],
+      ['坂倉 将吾', '130', '500', '450', '60', '130', '20', '3', '10', '196', '50', '5', '2', '1', '3', '48', '2', '1', '90', '10', '.288', '.436', '.360'],
+    ]
+    const html = makeBattingHtml(rows)
+    const map = parseNpbBattingHtml(html)
+    expect(map.get('秋山翔吾')?.batHand).toBe('L')
+    expect(map.get('坂倉将吾')?.batHand).toBe('R')
+  })
+})
+
+describe('parseNpbPitchingHtml – throwHand', () => {
+  it('半角 * 付きは左投げ（L）として検出される', () => {
+    const html = makePitchingHtml([['*床田 寛樹', '20', '8', '6']])
+    const stats = parseNpbPitchingHtml(html).get('床田寛樹')
+    expect(stats?.throwHand).toBe('L')
+  })
+
+  it('全角 ＊ 付きも左投げ（L）として検出される', () => {
+    const trs = '<tr><td>＊森浦 大輔</td><td>40</td><td>2</td><td>2</td></tr>'
+    const html = `<html><body>
+      <table>
+        <thead><tr><th>選手</th><th>登板</th><th>勝利</th><th>敗北</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </body></html>`
+    const stats = parseNpbPitchingHtml(html).get('森浦大輔')
+    expect(stats?.throwHand).toBe('L')
+  })
+
+  it('* なし選手は右投げ（R）として検出される', () => {
+    const html = makePitchingHtml([['森下 暢仁', '22', '10', '5']])
+    const stats = parseNpbPitchingHtml(html).get('森下暢仁')
+    expect(stats?.throwHand).toBe('R')
+  })
+})
+
+// ─────────────────────────────────────────────
 // fetchNpbStats
 // ─────────────────────────────────────────────
 

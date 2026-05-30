@@ -1597,13 +1597,21 @@ export const useGameStore = create<GameStore>()(
           localStorage.removeItem(name)
         },
       },
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<GameStore>),
-        // エフェクトは一時的な表示状態なので、リロード時にリセット
-        activeEffect: null,
-        effectTimestamp: 0,
-      }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<GameStore>
+        return {
+          ...current,
+          ...p,
+          // エフェクトは一時的な表示状態なので、リロード時にリセット
+          activeEffect: null,
+          effectTimestamp: 0,
+          // 新しいデフォルト値を保持しつつ既存設定をマージ
+          statDisplaySettings: {
+            ...current.statDisplaySettings,
+            ...(p.statDisplaySettings ?? {}),
+          },
+        }
+      },
     },
   ),
 )

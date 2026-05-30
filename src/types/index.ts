@@ -61,6 +61,9 @@ export interface RosterPlayer {
   earnedRuns?: string
   era?: string
   whip?: string
+  // 打投左右
+  batHand?: 'L' | 'R'      // 打席の利き（L=左打ち, R=右打ち）
+  throwHand?: 'L' | 'R'   // 投球の利き（L=左投げ, R=右投げ）
 }
 
 export interface Count {
@@ -162,6 +165,9 @@ export interface LineupPlayer {
   earnedRuns?: string
   era?: string
   whip?: string
+  // 打投左右
+  batHand?: 'L' | 'R'      // 打席の利き（L=左打ち, R=右打ち）
+  throwHand?: 'L' | 'R'   // 投球の利き（L=左投げ, R=右投げ）
 }
 
 export interface InningScore {
@@ -400,6 +406,8 @@ export interface StatDisplaySettings {
   showHolds: boolean
   showEra: boolean
   showWhip: boolean
+  // 打投左右
+  showHandedness: boolean
 }
 
 export const defaultStatDisplaySettings: StatDisplaySettings = {
@@ -413,6 +421,7 @@ export const defaultStatDisplaySettings: StatDisplaySettings = {
   showHolds: false,
   showEra: true,
   showWhip: true,
+  showHandedness: true,
 }
 
 /**
@@ -548,6 +557,7 @@ export function computeLiveWhip(player: LineupPlayer, gameStats?: PitcherGameSta
 export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySettings): string {
   const s = settings ?? defaultStatDisplaySettings
   const parts: string[] = []
+  if (s.showHandedness && player.batHand) parts.push(player.batHand === 'L' ? '[L]' : '(R)')
   if (s.showBattingAvg && player.battingAvg) parts.push(player.battingAvg)
   if (s.showHomeRuns && player.homeRuns) parts.push(`${player.homeRuns}本`)
   if (s.showRbi && player.rbi) parts.push(`${player.rbi}打点`)
@@ -559,6 +569,7 @@ export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySet
 export function formatPitcherStat(player: LineupPlayer, settings?: StatDisplaySettings, gameStats?: PitcherGameStats): string {
   const s = settings ?? defaultStatDisplaySettings
   const parts: string[] = []
+  if (s.showHandedness && player.throwHand) parts.push(player.throwHand === 'L' ? '[L]' : '(R)')
   if (s.showAppearances && player.appearances) parts.push(`${player.appearances}登板`)
   if (s.showRecord) {
     const rec = formatPitcherRecord({ wins: player.wins, losses: player.losses })

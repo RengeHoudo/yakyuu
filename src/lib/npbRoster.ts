@@ -73,6 +73,7 @@ export interface BattingStats {
   groundedIntoDoublePlays?: string // 併殺打
   sluggingPct?: string      // 長打率
   onBasePct?: string        // 出塁率
+  batHand?: 'L' | 'R'      // 打席の利き（L=左打ち, R=右打ち）
 }
 
 export interface PitchingStats {
@@ -101,6 +102,7 @@ export interface PitchingStats {
   era?: string
   whip?: string    // (hitsAllowed + walksAllowed) / inningsPitched から計算
   record?: string  // 後方互換用: "${wins}勝${losses}敗"
+  throwHand?: 'L' | 'R'  // 投球の利き（L=左投げ, R=右投げ）
 }
 
 /**
@@ -172,11 +174,15 @@ export function parseNpbBattingHtml(html: string): Map<string, BattingStats> {
       const cells = Array.from(row.querySelectorAll('td'))
       const rawName = cells[nameIdx]?.textContent?.trim() ?? ''
       if (!rawName) continue
+      const isLeft = /^[\uFF01-\uFF5E]/.test(rawName)
+        ? /^\uFF0A/.test(rawName)
+        : rawName.startsWith('*')
       const name = normalizePlayerName(rawName)
       const key = nameKey(name)
       if (!key) continue
 
       const stats: BattingStats = {}
+      stats.batHand = isLeft ? 'L' : 'R'
 
       const avg = cellVal(cells, avgIdx)
       if (avg) stats.battingAvg = avg
@@ -287,11 +293,15 @@ export function parseNpbPitchingHtml(html: string): Map<string, PitchingStats> {
       const cells = Array.from(row.querySelectorAll('td'))
       const rawName = cells[nameIdx]?.textContent?.trim() ?? ''
       if (!rawName) continue
+      const isLeft = /^[\uFF01-\uFF5E]/.test(rawName)
+        ? /^\uFF0A/.test(rawName)
+        : rawName.startsWith('*')
       const name = normalizePlayerName(rawName)
       const key = nameKey(name)
       if (!key) continue
 
       const stats: PitchingStats = {}
+      stats.throwHand = isLeft ? 'L' : 'R'
 
       const g = cellVal(cells, gIdx); if (g) stats.appearances = g
       const w = cellVal(cells, wIdx); if (w) stats.wins = w

@@ -291,6 +291,7 @@ function BatterRow({
                 groundedIntoDoublePlays: r.groundedIntoDoublePlays,
                 sluggingPct: r.sluggingPct,
                 onBasePct: r.onBasePct,
+                batHand: r.batHand,
               })
             }}
           >
@@ -375,9 +376,12 @@ function BatterRow({
           </div>
         )}
       </div>
-      {/* 2行目: スタッツ（打率・HR・打点・OPS） ─ 読み取り専用 + 試合成績編集ボタン */}
+      {/* 2行目: スタッツ（左右・打率・HR・打点・OPS） ─ 読み取り専用 + 試合成績編集ボタン */}
       {showStats && (
         <div className="flex items-center gap-1 pl-5">
+          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-6 shrink-0 text-center">
+            {player.batHand === 'L' ? '左' : player.batHand === 'R' ? '右' : '-'}
+          </span>
           <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-14 shrink-0 text-center">
             {player.battingAvg || '---'}
           </span>
@@ -499,6 +503,7 @@ function PitcherRow({
               earnedRuns: r.earnedRuns,
               era: r.era,
               whip: r.whip,
+              throwHand: r.throwHand,
             })
           }}
         >
@@ -693,6 +698,9 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             position: entry.position,
             name: matched.name,
             number: matched.number,
+            // 打投左右は静的属性なので常に更新
+            batHand: matched.batHand,
+            throwHand: matched.throwHand,
             // 同じ選手なら試合中の成績を保持、新しい選手ならロスターから引き継ぐ
             ...(isPitcher || isSamePlayer ? {} : {
               battingAvg: matched.battingAvg ?? '',
@@ -730,6 +738,9 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
               name: matched.name,
               number: matched.number,
               position: '投',
+              // 打投左右は静的属性なので常に更新
+              throwHand: matched.throwHand,
+              batHand: matched.batHand,
               // 同じ投手なら試合中の成績を保持
               ...(isSamePitcher ? {} : {
                 appearances: matched.appearances ?? '',
@@ -757,6 +768,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
                 earnedRuns: matched.earnedRuns,
                 era: matched.era,
                 whip: matched.whip,
+                throwHand: matched.throwHand,
               }),
             }
           }
@@ -1030,6 +1042,7 @@ export default function LineupControl() {
     { key: 'showHolds', label: 'ホールド' },
     { key: 'showEra', label: '防御率' },
     { key: 'showWhip', label: 'WHIP' },
+    { key: 'showHandedness', label: '左右' },
   ]
 
   return (
