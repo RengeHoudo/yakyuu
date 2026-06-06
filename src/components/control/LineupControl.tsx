@@ -390,9 +390,22 @@ function BatterRow({
       {/* 2行目: スタッツ（左右・打率・HR・打点・OPS） ─ 読み取り専用 + 試合成績編集ボタン */}
       {showStats && (
         <div className="flex items-center gap-1 pl-5">
-          <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-6 shrink-0 text-center">
-            {player.batHand === 'L' ? '左' : player.batHand === 'R' ? '右' : '-'}
-          </span>
+          {player.switchHitter ? (
+            <select
+              className="bg-gray-700 text-white rounded px-1 py-0.5 text-xs w-10 shrink-0 text-center"
+              value={player.batHand ?? 'S'}
+              title="スイッチヒッター: 今打席を選択"
+              onChange={(e) => onChange({ ...player, batHand: e.target.value as 'L' | 'R' | 'S' })}
+            >
+              <option value="S">両</option>
+              <option value="L">左</option>
+              <option value="R">右</option>
+            </select>
+          ) : (
+            <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-6 shrink-0 text-center">
+              {player.batHand === 'L' ? '左' : player.batHand === 'R' ? '右' : '-'}
+            </span>
+          )}
           <span className="bg-gray-700/60 text-gray-300 rounded px-1 py-0.5 text-xs w-14 shrink-0 text-center">
             {player.battingAvg || '---'}
           </span>
