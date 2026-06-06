@@ -681,10 +681,10 @@ describe('formatBatterStat – showHandedness', () => {
     expect(result).toMatch(/^\[L\]/)
   })
 
-  it('batHand S + showHandedness true → [S] が先頭に付く', () => {
+  it('batHand S + showHandedness true → <S> が先頭に付く', () => {
     const player = { ...SAMPLE_PLAYER, batHand: 'S' as const }
     const result = formatBatterStat(player, makeSettings({ showHandedness: true }))
-    expect(result).toMatch(/^\[S\]/)
+    expect(result).toMatch(/^<S>/)
   })
 
   it('batHand R + showHandedness true → (R) が先頭に付く', () => {

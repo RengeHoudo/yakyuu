@@ -562,7 +562,7 @@ export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySet
   const parts: string[] = []
   if (s.showHandedness && player.batHand) {
     if (player.batHand === 'L') parts.push('[L]')
-    else if (player.batHand === 'S') parts.push('[S]')
+    else if (player.batHand === 'S') parts.push('<S>')
     else parts.push('(R)')
   }
   if (s.showBattingAvg && player.battingAvg) parts.push(player.battingAvg)
