@@ -423,6 +423,30 @@ describe('parseNpbBattingHtml – batHand', () => {
     expect(map.get('秋山翔吾')?.batHand).toBe('L')
     expect(map.get('坂倉将吾')?.batHand).toBe('R')
   })
+
+  it('半角 + 付きはスイッチヒッター（S）として検出される', () => {
+    const row: BattingRow = ['+平川 蓮', '100', '350', '320', '40', '90', '15', '2', '5', '129', '30', '10', '3', '5', '2', '30', '2', '1', '60', '5', '.281', '.403', '.320']
+    const html = makeBattingHtml([row])
+    const stats = parseNpbBattingHtml(html).get('平川蓮')
+    expect(stats).toBeDefined()
+    expect(stats?.batHand).toBe('S')
+  })
+
+  it('全角 ＋ 付きもスイッチヒッター（S）として検出される', () => {
+    const row: BattingRow = ['＋平川 蓮', '100', '350', '320', '40', '90', '15', '2', '5', '129', '30', '10', '3', '5', '2', '30', '2', '1', '60', '5', '.281', '.403', '.320']
+    const html = makeBattingHtml([row])
+    const stats = parseNpbBattingHtml(html).get('平川蓮')
+    expect(stats).toBeDefined()
+    expect(stats?.batHand).toBe('S')
+  })
+
+  it('+ 付き選手名のキーから + が除去されている', () => {
+    const row: BattingRow = ['+平川 蓮', '100', '350', '320', '40', '90', '15', '2', '5', '129', '30', '10', '3', '5', '2', '30', '2', '1', '60', '5', '.281', '.403', '.320']
+    const html = makeBattingHtml([row])
+    const map = parseNpbBattingHtml(html)
+    expect(map.has('平川蓮')).toBe(true)
+    expect(map.has('+平川蓮')).toBe(false)
+  })
 })
 
 describe('parseNpbPitchingHtml – throwHand', () => {

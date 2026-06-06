@@ -62,7 +62,7 @@ export interface RosterPlayer {
   era?: string
   whip?: string
   // 打投左右
-  batHand?: 'L' | 'R'      // 打席の利き（L=左打ち, R=右打ち）
+  batHand?: 'L' | 'R' | 'S'      // 打席の利き（L=左打ち, R=右打ち, S=スイッチヒッター）
   throwHand?: 'L' | 'R'   // 投球の利き（L=左投げ, R=右投げ）
 }
 
@@ -166,8 +166,10 @@ export interface LineupPlayer {
   era?: string
   whip?: string
   // 打投左右
-  batHand?: 'L' | 'R'      // 打席の利き（L=左打ち, R=右打ち）
+  batHand?: 'L' | 'R' | 'S'      // 打席の利き（L=左打ち, R=右打ち, S=スイッチヒッター）
   throwHand?: 'L' | 'R'   // 投球の利き（L=左投げ, R=右投げ）
+  /** スイッチヒッターフラグ: batHand=S 由来の打者かどうかを記憶 */
+  switchHitter?: boolean
 }
 
 export interface InningScore {
@@ -558,7 +560,11 @@ export function computeLiveWhip(player: LineupPlayer, gameStats?: PitcherGameSta
 export function formatBatterStat(player: LineupPlayer, settings?: StatDisplaySettings): string {
   const s = settings ?? defaultStatDisplaySettings
   const parts: string[] = []
-  if (s.showHandedness && player.batHand) parts.push(player.batHand === 'L' ? '[L]' : '(R)')
+  if (s.showHandedness && player.batHand) {
+    if (player.batHand === 'L') parts.push('[L]')
+    else if (player.batHand === 'S') parts.push('[S]')
+    else parts.push('(R)')
+  }
   if (s.showBattingAvg && player.battingAvg) parts.push(player.battingAvg)
   if (s.showHomeRuns && player.homeRuns) parts.push(`${player.homeRuns}本`)
   if (s.showRbi && player.rbi) parts.push(`${player.rbi}打点`)

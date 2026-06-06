@@ -302,6 +302,7 @@ function BatterRow({
                 sluggingPct: r.sluggingPct,
                 onBasePct: r.onBasePct,
                 batHand: r.batHand,
+                switchHitter: r.batHand === 'S',
               })
             }}
           >
@@ -714,7 +715,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             // 打投左右は静的属性なので常に更新
             batHand: matched.batHand,
             throwHand: matched.throwHand,
-            // 同じ選手なら試合中の成績を保持、新しい選手ならロスターから引き継ぐ
+            switchHitter: matched.batHand === 'S',
             ...(isPitcher || isSamePlayer ? {} : {
               battingAvg: matched.battingAvg ?? '',
               homeRuns: matched.homeRuns ?? '',
@@ -751,9 +752,10 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
               name: matched.name,
               number: matched.number,
               position: '投',
-              // 打投左右は静的属性なので常に更新
+            // 打投左右は静的属性なので常に更新
               throwHand: matched.throwHand,
               batHand: matched.batHand,
+              switchHitter: matched.batHand === 'S',
               // 同じ投手なら試合中の成績を保持
               ...(isSamePitcher ? {} : {
                 appearances: matched.appearances ?? '',
