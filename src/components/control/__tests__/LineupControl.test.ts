@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatRosterOptionLabel, sortedRoster } from '../LineupControl'
+import { formatRosterOptionLabel, sortedRoster, rosterPitcherToLineupFields } from '../LineupControl'
 import type { PositionCategory, RosterPlayer } from '../../../types'
 
 describe('formatRosterOptionLabel', () => {
@@ -80,5 +80,64 @@ describe('sortedRoster', () => {
     const roster = [makePlayer('14'), makePlayer('0'), makePlayer('00'), makePlayer('3')]
     const result = sortedRoster(roster)
     expect(result.map((r) => r.number)).toEqual(['00', '0', '3', '14'])
+  })
+})
+
+// ─────────────────────────────────────────────
+// rosterPitcherToLineupFields
+// ─────────────────────────────────────────────
+
+describe('rosterPitcherToLineupFields', () => {
+  it('投手の投球成績を LineupPlayer フィールドにマップする', () => {
+    const r: RosterPlayer = {
+      positionCategory: '投手', number: '18', name: '森下 暢仁',
+      appearances: '22', record: '10勝5敗', wins: '10', losses: '5',
+      era: '2.50', whip: '1.10',
+    }
+    const fields = rosterPitcherToLineupFields(r)
+    expect(fields.name).toBe('森下 暢仁')
+    expect(fields.number).toBe('18')
+    expect(fields.appearances).toBe('22')
+    expect(fields.record).toBe('10勝5敗')
+    expect(fields.wins).toBe('10')
+    expect(fields.losses).toBe('5')
+    expect(fields.era).toBe('2.50')
+    expect(fields.whip).toBe('1.10')
+  })
+
+  it('投手の打撃成績も LineupPlayer フィールドにマップされる（セ・リーグ対応）', () => {
+    const r: RosterPlayer = {
+      positionCategory: '投手', number: '18', name: '森下 暢仁',
+      appearances: '22', wins: '10', losses: '5',
+      battingAvg: '.167', homeRuns: '0', rbi: '2', ops: '.389',
+      atBats: '18', hits: '3', batHand: 'R',
+    }
+    const fields = rosterPitcherToLineupFields(r)
+    expect(fields.battingAvg).toBe('.167')
+    expect(fields.homeRuns).toBe('0')
+    expect(fields.rbi).toBe('2')
+    expect(fields.ops).toBe('.389')
+    expect(fields.atBats).toBe('18')
+    expect(fields.hits).toBe('3')
+    expect(fields.batHand).toBe('R')
+  })
+
+  it('打撃成績がない投手では battingAvg が undefined', () => {
+    const r: RosterPlayer = {
+      positionCategory: '投手', number: '14', name: '大瀬良 大地',
+      appearances: '15', wins: '7', losses: '5',
+    }
+    const fields = rosterPitcherToLineupFields(r)
+    expect(fields.battingAvg).toBeUndefined()
+    expect(fields.ops).toBeUndefined()
+  })
+
+  it('appearances が undefined のときは空文字にフォールバックする', () => {
+    const r: RosterPlayer = {
+      positionCategory: '投手', number: '14', name: '大瀬良 大地',
+    }
+    const fields = rosterPitcherToLineupFields(r)
+    expect(fields.appearances).toBe('')
+    expect(fields.record).toBe('')
   })
 })

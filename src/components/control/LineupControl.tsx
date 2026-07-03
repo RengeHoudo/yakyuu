@@ -216,6 +216,69 @@ export function sortedRoster(roster: RosterPlayer[]): RosterPlayer[] {
   )
 }
 
+/**
+ * RosterPlayer（投手）を LineupPlayer の差分フィールドにマップする。
+ * 投手成績・打撃成績の両方を含む（セ・リーグでは投手も打撃を行うため）。
+ */
+export function rosterPitcherToLineupFields(r: RosterPlayer): Partial<LineupPlayer> {
+  return {
+    name: r.name,
+    number: r.number,
+    // 投手成績
+    appearances: r.appearances ?? '',
+    record: r.record ?? '',
+    wins: r.wins,
+    losses: r.losses,
+    saves: r.saves,
+    holds: r.holds,
+    holdPoints: r.holdPoints,
+    completeGames: r.completeGames,
+    shutouts: r.shutouts,
+    noWalkGames: r.noWalkGames,
+    winPct: r.winPct,
+    battersFaced: r.battersFaced,
+    inningsPitched: r.inningsPitched,
+    hitsAllowed: r.hitsAllowed,
+    homeRunsAllowed: r.homeRunsAllowed,
+    walksAllowed: r.walksAllowed,
+    intentionalWalksAllowed: r.intentionalWalksAllowed,
+    hitByPitchAllowed: r.hitByPitchAllowed,
+    strikeoutsThrown: r.strikeoutsThrown,
+    wildPitches: r.wildPitches,
+    balks: r.balks,
+    runsAllowed: r.runsAllowed,
+    earnedRuns: r.earnedRuns,
+    era: r.era,
+    whip: r.whip,
+    throwHand: r.throwHand,
+    // 打撃成績（セ・リーグでは投手も打撃を行う）
+    battingAvg: r.battingAvg,
+    homeRuns: r.homeRuns,
+    rbi: r.rbi,
+    ops: r.ops,
+    games: r.games,
+    plateAppearances: r.plateAppearances,
+    atBats: r.atBats,
+    runs: r.runs,
+    hits: r.hits,
+    doubles: r.doubles,
+    triples: r.triples,
+    totalBases: r.totalBases,
+    stolenBases: r.stolenBases,
+    caughtStealing: r.caughtStealing,
+    sacrificeHits: r.sacrificeHits,
+    sacrificeFlies: r.sacrificeFlies,
+    walks: r.walks,
+    intentionalWalks: r.intentionalWalks,
+    hitByPitch: r.hitByPitch,
+    strikeouts: r.strikeouts,
+    groundedIntoDoublePlays: r.groundedIntoDoublePlays,
+    sluggingPct: r.sluggingPct,
+    onBasePct: r.onBasePct,
+    batHand: r.batHand,
+  }
+}
+
 function BatterRow({
   player,
   isCurrent,
@@ -501,37 +564,7 @@ function PitcherRow({
           value=""
           onChange={(e) => {
             const r = pitchers.find((r) => `${r.number}__${r.name}` === e.target.value)
-            if (r) onChange({
-              ...player,
-              name: r.name,
-              number: r.number,
-              appearances: r.appearances ?? '',
-              record: r.record ?? '',
-              wins: r.wins,
-              losses: r.losses,
-              saves: r.saves,
-              holds: r.holds,
-              holdPoints: r.holdPoints,
-              completeGames: r.completeGames,
-              shutouts: r.shutouts,
-              noWalkGames: r.noWalkGames,
-              winPct: r.winPct,
-              battersFaced: r.battersFaced,
-              inningsPitched: r.inningsPitched,
-              hitsAllowed: r.hitsAllowed,
-              homeRunsAllowed: r.homeRunsAllowed,
-              walksAllowed: r.walksAllowed,
-              intentionalWalksAllowed: r.intentionalWalksAllowed,
-              hitByPitchAllowed: r.hitByPitchAllowed,
-              strikeoutsThrown: r.strikeoutsThrown,
-              wildPitches: r.wildPitches,
-              balks: r.balks,
-              runsAllowed: r.runsAllowed,
-              earnedRuns: r.earnedRuns,
-              era: r.era,
-              whip: r.whip,
-              throwHand: r.throwHand,
-            })
+            if (r) onChange({ ...player, ...rosterPitcherToLineupFields(r) })
           }}
         >
           <option value="">{player.name || '-- 投手を選択 --'}</option>
