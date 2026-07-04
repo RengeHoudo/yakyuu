@@ -758,6 +758,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             position: entry.position,
             name: matched.name,
             number: matched.number,
+            npbDisplayName: entry.name,
             // 打投左右は静的属性なので常に更新
             batHand: matched.batHand,
             throwHand: matched.throwHand,

@@ -170,6 +170,8 @@ export interface LineupPlayer {
   throwHand?: 'L' | 'R'   // 投球の利き（L=左投げ, R=右投げ）
   /** スイッチヒッターフラグ: batHand=S 由来の打者かどうかを記憶 */
   switchHitter?: boolean
+  /** NPBスコアページから取得した選手名略称（例: "廣瀨隆"）。配置図表示の分割判定に使用 */
+  npbDisplayName?: string
 }
 
 export interface InningScore {
@@ -376,6 +378,43 @@ export function getDisplayNameInContext(name: string, teamNames: string[]): stri
 
   // 姓+名先頭2文字
   return lastName! + firstName.slice(0, 2)
+}
+
+/**
+ * 表示名を「姓部分（main）」と「名前先頭文字部分（small）」に分割する。
+ *
+ * - 同姓なし → `{ main: 姓, small: null }`
+ * - 同姓あり → `{ main: 姓, small: 名前先頭N文字 }`
+ * - スペースなし（外国人等）→ `{ main: 表示名, small: null }`
+ */
+export function splitDisplayName(name: string, teamNames: string[]): { main: string; small: string | null } {
+  const display = getDisplayNameInContext(name, teamNames)
+  if (!display) return { main: '', small: null }
+  if (!name.includes(' ')) return { main: display, small: null }
+  const lastName = name.split(' ')[0]!
+  if (display.length > lastName.length) {
+    return { main: lastName, small: display.slice(lastName.length) }
+  }
+  return { main: display, small: null }
+}
+
+/**
+ * NPBスコアページの略称名（例: "廣瀨隆"）とフルネームをもとに、
+ * 姓部分（main）と名前先頭文字部分（small）に分割する。
+ *
+ * - NPB表記が姓のみ（例: "廣瀨"） → `{ main: '廣瀨', small: null }`
+ * - NPB表記が姓+名先頭N文字（例: "廣瀨隆"） → `{ main: '廣瀨', small: '隆' }`
+ * - フルネームにスペースなし（外国人等）→ `{ main: NPB表記, small: null }`
+ */
+export function splitNpbDisplayName(npbName: string, fullName: string): { main: string; small: string | null } {
+  if (!fullName.includes(' ')) {
+    return { main: npbName, small: null }
+  }
+  const lastName = fullName.split(' ')[0]!
+  if (npbName.startsWith(lastName) && npbName.length > lastName.length) {
+    return { main: lastName, small: npbName.slice(lastName.length) }
+  }
+  return { main: lastName, small: null }
 }
 
 export const initialPlayerInfo: PlayerInfo = {

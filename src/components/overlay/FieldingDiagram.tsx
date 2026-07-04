@@ -1,6 +1,6 @@
 import { useGameStore } from '../../store/useGameStore'
 import type { Position } from '../../types'
-import { getDisplayNameInContext } from '../../types'
+import { splitDisplayName, splitNpbDisplayName } from '../../types'
 
 /** 表示名を最大4文字に切り詰める */
 function truncate4(name: string): string {
@@ -32,11 +32,13 @@ interface LabelProps {
   x: number
   y: number
   name: string
+  nameSmall?: string | null
   isDefense: boolean
 }
 
-function PlayerLabel({ x, y, name, isDefense }: LabelProps) {
-  const w = Math.max(26, name.length * 10 + 8)
+function PlayerLabel({ x, y, name, nameSmall, isDefense }: LabelProps) {
+  const smallPx = nameSmall ? nameSmall.length * 8 : 0
+  const w = Math.max(26, name.length * 10 + smallPx + 8)
   const fill   = isDefense ? '#1e293b' : '#ea580c'
   const stroke = isDefense ? '#475569' : '#c2410c'
   return (
@@ -51,7 +53,7 @@ function PlayerLabel({ x, y, name, isDefense }: LabelProps) {
         fontFamily="'Noto Sans JP', 'Hiragino Sans', sans-serif"
         fontWeight={isDefense ? 'normal' : 'bold'}
       >
-        {name}
+        {name}{nameSmall && <tspan fontSize="8">{nameSmall}</tspan>}
       </text>
     </g>
   )
@@ -75,10 +77,14 @@ export default function FieldingDiagram() {
     if (!player.name || !player.position) continue
     const coords = FIELDER_COORDS[player.position]
     if (!coords) continue
+    const split = player.npbDisplayName
+      ? splitNpbDisplayName(player.npbDisplayName, player.name)
+      : splitDisplayName(player.name, defNames)
     fielderLabels.push({
       x: coords.x,
       y: coords.y,
-      name: truncate4(getDisplayNameInContext(player.name, defNames)),
+      name: truncate4(split.main),
+      nameSmall: split.small,
       isDefense: true,
     })
   }
@@ -122,13 +128,20 @@ export default function FieldingDiagram() {
         {baseEntries.map(({ base, on, idx }) => {
           if (!on) return null
           let name = '走者'
+          let nameSmall: string | null = null
           if (idx !== null) {
             const p = atkLineup[idx]
-            if (p?.name) name = truncate4(getDisplayNameInContext(p.name, atkNames))
+            if (p?.name) {
+              const split = p.npbDisplayName
+                ? splitNpbDisplayName(p.npbDisplayName, p.name)
+                : splitDisplayName(p.name, atkNames)
+              name = truncate4(split.main)
+              nameSmall = split.small
+            }
           }
           const { x, y } = BASE_COORDS[base]
           return (
-            <PlayerLabel key={`r-${base}`} x={x} y={y} name={name} isDefense={false} />
+            <PlayerLabel key={`r-${base}`} x={x} y={y} name={name} nameSmall={nameSmall} isDefense={false} />
           )
         })}
       </svg>

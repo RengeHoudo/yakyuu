@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LineupPlayer, PitcherGameStats, StatDisplaySettings } from '../index'
-import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, formatPitcherGameSummary, parseInningsPitched, computeLiveEra, computeLiveWhip, getDisplayNameInContext } from '../index'
+import { defaultStatDisplaySettings, formatBatterStat, formatPitcherRecord, formatPitcherStat, formatPitcherGameSummary, parseInningsPitched, computeLiveEra, computeLiveWhip, getDisplayNameInContext, splitDisplayName, splitNpbDisplayName } from '../index'
 
 const SAMPLE_PLAYER: LineupPlayer = {
   order: 1,
@@ -770,5 +770,80 @@ describe('formatPitcherStat – showHandedness', () => {
     const player = { ...PITCHER, throwHand: 'L' as const }
     const result = formatPitcherStat(player, makeSettings({ showHandedness: true, showEra: true, showWhip: true }))
     expect(result).toBe('[L] 防御率 2.50 WHIP 1.10')
+  })
+})
+
+// ─────────────────────────────────────────────
+// splitDisplayName
+// ─────────────────────────────────────────────
+
+describe('splitDisplayName', () => {
+  it('空文字の場合: main="" small=null', () => {
+    expect(splitDisplayName('', [])).toEqual({ main: '', small: null })
+  })
+
+  it('同姓なし → 姓のみ（small=null）', () => {
+    const team = ['廣瀨 隆太', '田中 義也']
+    expect(splitDisplayName('廣瀨 隆太', team)).toEqual({ main: '廣瀨', small: null })
+  })
+
+  it('同姓あり → main=姓、small=名前先頭1文字', () => {
+    const team = ['廣瀨 隆太', '廣瀨 義也']
+    expect(splitDisplayName('廣瀨 隆太', team)).toEqual({ main: '廣瀨', small: '隆' })
+    expect(splitDisplayName('廣瀨 義也', team)).toEqual({ main: '廣瀨', small: '義' })
+  })
+
+  it('同姓かつ名前先頭1文字も同じ → main=姓、small=名前先頭2文字', () => {
+    const team = ['山本 祐大', '山本 祐太']
+    expect(splitDisplayName('山本 祐大', team)).toEqual({ main: '山本', small: '祐大' })
+    expect(splitDisplayName('山本 祐太', team)).toEqual({ main: '山本', small: '祐太' })
+  })
+
+  it('スペースなし（外国人・カタカナのみ）→ main=名前、small=null', () => {
+    const team = ['マクブルーム']
+    expect(splitDisplayName('マクブルーム', team)).toEqual({ main: 'マクブルーム', small: null })
+  })
+
+  it('A.カタカナスタイル → main=カタカナ部分、small=null', () => {
+    const team = ['S.サンタナ']
+    expect(splitDisplayName('S.サンタナ', team)).toEqual({ main: 'サンタナ', small: null })
+  })
+
+  it('チームに自分しかいない場合 → 姓のみ（small=null）', () => {
+    expect(splitDisplayName('山本 祐大', ['山本 祐大'])).toEqual({ main: '山本', small: null })
+  })
+
+  it('チームが空の場合 → 姓のみ（small=null）', () => {
+    expect(splitDisplayName('山本 祐大', [])).toEqual({ main: '山本', small: null })
+  })
+})
+
+// ─────────────────────────────────────────────
+// splitNpbDisplayName
+// ─────────────────────────────────────────────
+
+describe('splitNpbDisplayName', () => {
+  it('NPB表記が姓のみ → { main: 姓, small: null }', () => {
+    expect(splitNpbDisplayName('廣瀨', '廣瀨 隆太')).toEqual({ main: '廣瀨', small: null })
+  })
+
+  it('NPB表記が姓+名先頭1文字 → { main: 姓, small: 名先頭1文字 }', () => {
+    expect(splitNpbDisplayName('廣瀨隆', '廣瀨 隆太')).toEqual({ main: '廣瀨', small: '隆' })
+  })
+
+  it('NPB表記が姓+名先頭2文字 → { main: 姓, small: 名先頭2文字 }', () => {
+    expect(splitNpbDisplayName('山本祐大', '山本 祐大郎')).toEqual({ main: '山本', small: '祐大' })
+  })
+
+  it('スペースなし（外国人等）→ { main: NPB表記, small: null }', () => {
+    expect(splitNpbDisplayName('マクブルーム', 'マクブルーム')).toEqual({ main: 'マクブルーム', small: null })
+  })
+
+  it('フルネームにスペースなし（A.カタカナ等）→ { main: NPB表記, small: null }', () => {
+    expect(splitNpbDisplayName('サンタナ', 'S.サンタナ')).toEqual({ main: 'サンタナ', small: null })
+  })
+
+  it('NPB表記と姓が一致しない場合（姓を返す）', () => {
+    expect(splitNpbDisplayName('山本', '山本 祐大')).toEqual({ main: '山本', small: null })
   })
 })
