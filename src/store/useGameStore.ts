@@ -424,6 +424,10 @@ interface GameActions {
   }) => void
   /** 投手の試合内成績を直接セット */
   setPitcherGameStats: (key: string, stats: PitcherGameStats) => void
+  /** 盗塁死: targetBase は盗もうとした塁 (second=二盗死, third=三盗死, home=本盗死) */
+  recordCaughtStealing: (targetBase: 'second' | 'third' | 'home') => void
+  /** 牽制死: base は牽制でアウトになった走者がいた塁 */
+  recordPickedOff: (base: keyof Runners) => void
   /** 直前の状態に戻す */
   undo: () => void
   /** undo 履歴件数（0 = undo 不可） */
@@ -1543,6 +1547,15 @@ export const useGameStore = create<GameStore>()(
           pitcherGameStats: { ...s.pitcherGameStats, [key]: stats },
         })),
 
+      recordCaughtStealing: (targetBase) =>
+        set((s) => {
+          const runnerBaseMap = { second: 'first', third: 'second', home: 'third' } as const
+          return applyRunnerOut(s, runnerBaseMap[targetBase])
+        }),
+
+      recordPickedOff: (base) =>
+        set((s) => applyRunnerOut(s, base)),
+
       undo: () => {
         if (_undoHistory.length === 0) return
         _undoInProgress = true
@@ -1662,6 +1675,44 @@ export function registerPitcherAppearance(
     })
   }
   return { pitcherHistory: history }
+}
+
+/**
+ * 走者アウト（盗塁死・牽制死）共通: 打者を進めない。
+ * runnerBase は走者がいた塁。走者がいない場合は何もしない。
+ */
+function applyRunnerOut(s: GameState, runnerBase: keyof Runners): Partial<GameState> {
+  if (!s.runners[runnerBase]) return {}
+
+  const newRunners = { ...s.runners, [runnerBase]: false }
+  const newRI = { ...s.runnerIndices, [runnerBase]: null }
+  const newRRP = { ...s.runnerResponsiblePitcher, [runnerBase]: null }
+  const pgsPatch = updatePitcherGameStatsPatch(s, { outsRecorded: 1 })
+  const newOuts = s.count.outs + 1
+
+  if (newOuts >= 3) {
+    const sWithRunners: GameState = {
+      ...extractGameState(s),
+      runners: newRunners,
+      runnerIndices: newRI,
+      runnerResponsiblePitcher: newRRP,
+    }
+    return {
+      runners: newRunners,
+      runnerIndices: newRI,
+      runnerResponsiblePitcher: newRRP,
+      ...advanceInningPatch(sWithRunners),
+      ...pgsPatch,
+    }
+  }
+
+  return {
+    runners: newRunners,
+    runnerIndices: newRI,
+    runnerResponsiblePitcher: newRRP,
+    count: { ...s.count, outs: newOuts },
+    ...pgsPatch,
+  }
 }
 
 /** アウトプレー共通: outsToAdd 個アウト & 打者交代 & 投球数+1 & 打者成績更新 */

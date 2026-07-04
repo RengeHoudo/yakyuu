@@ -4103,3 +4103,207 @@ describe('recordSacrificeBuntFC 犠野', () => {
     expect(s().batter.name).toBe(CARP_LINEUP[1]!.name)
   })
 })
+
+// ─────────────────────────────────────────────
+// 盗塁死 (recordCaughtStealing)
+// ─────────────────────────────────────────────
+
+describe('recordCaughtStealing', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+      count: { balls: 2, strikes: 1, outs: 0 },
+    })
+  })
+
+  it('CS-1: 二盗死 — 一塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false } })
+    s().recordCaughtStealing('second')
+    expect(s().runners.first).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('CS-2: 三盗死 — 二塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: false, second: true, third: false } })
+    s().recordCaughtStealing('third')
+    expect(s().runners.second).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('CS-3: 本盗死 — 三塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: true } })
+    s().recordCaughtStealing('home')
+    expect(s().runners.third).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('CS-4: 打者インデックスは変わらない', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false }, awayBatterIndex: 3 })
+    s().recordCaughtStealing('second')
+    expect(s().awayBatterIndex).toBe(3)
+  })
+
+  it('CS-5: B/Sカウントはリセットされない', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      count: { balls: 2, strikes: 1, outs: 0 },
+    })
+    s().recordCaughtStealing('second')
+    expect(s().count.balls).toBe(2)
+    expect(s().count.strikes).toBe(1)
+  })
+
+  it('CS-6: 走者がいない場合は何もしない（二盗死）', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: false }, count: { balls: 0, strikes: 0, outs: 0 } })
+    s().recordCaughtStealing('second')
+    expect(s().count.outs).toBe(0)
+    expect(s().runners.first).toBe(false)
+  })
+
+  it('CS-7: 3アウト目でイニング進行する', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      count: { balls: 0, strikes: 0, outs: 2 },
+      currentHalf: 'top',
+    })
+    s().recordCaughtStealing('second')
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('CS-8: 3アウト目でも打者インデックスは変わらない', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 0, second: null, third: null },
+      count: { balls: 0, strikes: 0, outs: 2 },
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+    })
+    s().recordCaughtStealing('second')
+    // イニング進行後、表→裏なので home が攻撃。homeBatterIndex は変わらず 0
+    expect(s().awayBatterIndex).toBe(3)
+  })
+
+  it('CS-9: runnerIndices も更新される', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 2, second: null, third: null },
+    })
+    s().recordCaughtStealing('second')
+    expect(s().runnerIndices.first).toBeNull()
+  })
+
+  it('CS-10: 投手の outsRecorded が +1 される', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      pitcher: { name: '投手A', number: '18', stat: '', statLabel: '' },
+      currentHalf: 'top',
+    })
+    s().recordCaughtStealing('second')
+    const key = 'home-18'
+    expect(s().pitcherGameStats?.[key]?.outsRecorded).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────
+// 牽制死 (recordPickedOff)
+// ─────────────────────────────────────────────
+
+describe('recordPickedOff', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      homeLineup: [...CARP_LINEUP],
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+      count: { balls: 2, strikes: 1, outs: 0 },
+    })
+  })
+
+  it('PO-1: 一牽制死 — 一塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false } })
+    s().recordPickedOff('first')
+    expect(s().runners.first).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('PO-2: 二牽制死 — 二塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: false, second: true, third: false } })
+    s().recordPickedOff('second')
+    expect(s().runners.second).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('PO-3: 三牽制死 — 三塁走者が消え、アウト+1', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: true } })
+    s().recordPickedOff('third')
+    expect(s().runners.third).toBe(false)
+    expect(s().count.outs).toBe(1)
+  })
+
+  it('PO-4: 打者インデックスは変わらない', () => {
+    useGameStore.setState({ runners: { first: true, second: false, third: false }, awayBatterIndex: 3 })
+    s().recordPickedOff('first')
+    expect(s().awayBatterIndex).toBe(3)
+  })
+
+  it('PO-5: B/Sカウントはリセットされない', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      count: { balls: 2, strikes: 1, outs: 0 },
+    })
+    s().recordPickedOff('first')
+    expect(s().count.balls).toBe(2)
+    expect(s().count.strikes).toBe(1)
+  })
+
+  it('PO-6: 走者がいない場合は何もしない', () => {
+    useGameStore.setState({ runners: { first: false, second: false, third: false }, count: { balls: 0, strikes: 0, outs: 0 } })
+    s().recordPickedOff('first')
+    expect(s().count.outs).toBe(0)
+  })
+
+  it('PO-7: 3アウト目でイニング進行する', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      count: { balls: 0, strikes: 0, outs: 2 },
+      currentHalf: 'top',
+    })
+    s().recordPickedOff('first')
+    expect(s().count.outs).toBe(0)
+    expect(s().currentHalf).toBe('bottom')
+  })
+
+  it('PO-8: 3アウト目でも打者インデックスは変わらない', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      runnerIndices: { first: 0, second: null, third: null },
+      count: { balls: 0, strikes: 0, outs: 2 },
+      awayBatterIndex: 3,
+      currentHalf: 'top',
+    })
+    s().recordPickedOff('first')
+    expect(s().awayBatterIndex).toBe(3)
+  })
+
+  it('PO-9: 他の走者はそのまま残る', () => {
+    useGameStore.setState({ runners: { first: true, second: true, third: false } })
+    s().recordPickedOff('first')
+    expect(s().runners.first).toBe(false)
+    expect(s().runners.second).toBe(true)
+  })
+
+  it('PO-10: 投手の outsRecorded が +1 される', () => {
+    useGameStore.setState({
+      runners: { first: true, second: false, third: false },
+      pitcher: { name: '投手A', number: '18', stat: '', statLabel: '' },
+      currentHalf: 'top',
+    })
+    s().recordPickedOff('first')
+    const key = 'home-18'
+    expect(s().pitcherGameStats?.[key]?.outsRecorded).toBe(1)
+  })
+})
