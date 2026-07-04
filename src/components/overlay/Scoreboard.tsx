@@ -15,9 +15,35 @@ export default function Scoreboard() {
   const count = useGameStore((s) => s.count)
   const runners = useGameStore((s) => s.runners)
   const pitchCount = useGameStore((s) => s.pitchCount)
+  const isGameOver = useGameStore((s) => s.isGameOver)
 
-  const minInnings = 9
-  const displayCount = Math.max(minInnings, innings.length)
+  // 試合終了時に現在イニングが「プレー済み」かどうか判定:
+  // アウトが記録されているか、表の得点が入力されていれば「開始済み」とみなす
+  const currentInningData = innings.find((inn) => inn.inning === currentInning)
+  const currentInningStarted = count.outs > 0 || (currentInningData?.top ?? null) !== null
+
+  // 試合終了時: 延長でまだ何も起きていない回は表示しない
+  const shouldShowCurrentInning = !isGameOver
+    ? true
+    : currentHalf === 'bottom'
+      ? true
+      : currentInning <= 9
+        ? true
+        : currentInningStarted
+
+  // 表示するイニング数を決定
+  const displayCount = isGameOver
+    ? Math.max(9, shouldShowCurrentInning ? currentInning : currentInning - 1)
+    : Math.max(9, innings.length)
+
+  // ホームチームに "x" を表示するイニング番号 (試合終了・表の場合のみ)
+  const showXAtInning =
+    isGameOver && currentHalf === 'top' && shouldShowCurrentInning ? currentInning : null
+
+  // サヨナラ時に "Nx" を表示するイニング番号 (試合終了・裏で得点があった場合のみ)
+  const showSayonaraAtInning =
+    isGameOver && currentHalf === 'bottom' ? currentInning : null
+
   const displayInnings = Array.from({ length: displayCount }, (_, i) => {
     const num = i + 1
     const existing = innings.find((inn) => inn.inning === num)
@@ -124,9 +150,13 @@ export default function Scoreboard() {
                         : ''
                     }`}
                   >
-                    {bottomPlayed
-                      ? (inn.bottom ?? 0)
-                      : <span className="text-gray-600">-</span>
+                    {inn.inning === showXAtInning
+                      ? <span className="text-gray-400">x</span>
+                      : inn.inning === showSayonaraAtInning && (inn.bottom ?? 0) > 0
+                        ? <span>{inn.bottom}x</span>
+                        : bottomPlayed
+                          ? (inn.bottom ?? 0)
+                          : <span className="text-gray-600">-</span>
                     }
                   </td>
                 )
