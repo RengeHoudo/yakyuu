@@ -49,6 +49,17 @@ export function fetchNpbScorePage(year: string, date: string, homeCode: string, 
   return fetch(`/api/npb-scores/${year}/${date}/${homeCode}-${awayCode}-${gameNum}/`, NO_CACHE)
 }
 
+/** NPB試合ベンチ入り選手ページ（roster.html）を取得する */
+export function fetchNpbGameRosterPage(scoreUrl: string): Promise<Response> {
+  const base = scoreUrl.endsWith('/') ? scoreUrl : scoreUrl + '/'
+  const rosterUrl = base + 'roster.html'
+  if (isProduction()) {
+    return fetch(buildCorsProxyUrl(rosterUrl), NO_CACHE)
+  }
+  const devPath = rosterUrl.replace('https://npb.jp/scores/', '/api/npb-scores/')
+  return fetch(devPath, NO_CACHE)
+}
+
 /**
  * NPBボックススコアページ（box.html）を取得する。
  * scoreUrl には末尾スラッシュあり・なし両方対応。

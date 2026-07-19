@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { NPB_TEAM_MAP, NPB_STATS_CODE_MAP, parseNpbRosterHtml, fetchNpbRoster, parseNpbBattingHtml, parseNpbPitchingHtml, fetchNpbStats, parseScorePageLineup } from '../npbRoster'
+import { NPB_TEAM_MAP, NPB_STATS_CODE_MAP, parseNpbRosterHtml, fetchNpbRoster, parseNpbBattingHtml, parseNpbPitchingHtml, fetchNpbStats, parseScorePageLineup, parseNpbGameRosterHtml } from '../npbRoster'
 import type { RosterPlayer } from '../../types'
 
 // テスト用のミニマルなNPBページHTML
@@ -911,5 +911,152 @@ describe('fetchNpbStats \u2013 \u6295\u624b\u5168\u30d5\u30a3\u30fc\u30eb\u30c9\
     expect(result[0]?.holds).toBe('2')
     expect(result[0]?.era).toBe('2.21')
     expect(result[0]?.whip).toBeDefined()
+  })
+})
+
+// ─────────────────────────────────────────────
+// parseNpbGameRosterHtml
+// ─────────────────────────────────────────────
+
+/** 試合ベンチ入り選手ページのHTMLを生成するヘルパー */
+function makeGameRosterHtml(teams: { name: string; players: { num: string; abbr: string; hand: string }[] }[]): string {
+  const sections = teams.map(({ name, players }) => {
+    const rows = players.map(({ num, abbr, hand }) =>
+      `<tr><td class="num">${num}</td><td><a href="#">${abbr}</a></td><td class="w4">${hand}</td></tr>`
+    ).join('\n')
+    return `
+      <div class="roster_section">
+        <h5>${name}</h5>
+        <table>
+          <tbody>
+            <tr><th colspan="3">投手</th></tr>
+            ${rows}
+          </tbody>
+        </table>
+      </div>`
+  }).join('\n')
+  return `<html><body><div class="wrap">${sections}</div></body></html>`
+}
+
+describe('parseNpbGameRosterHtml', () => {
+  it('指定チームの背番号セットを返す', () => {
+    const html = makeGameRosterHtml([
+      { name: '中日ドラゴンズ', players: [{ num: '13', abbr: '橋本', hand: '左投左打' }, { num: '21', abbr: '金丸', hand: '左投左打' }] },
+      { name: '読売ジャイアンツ', players: [{ num: '17', abbr: '西舘', hand: '右投右打' }] },
+    ])
+    const nums = parseNpbGameRosterHtml(html, '中日')
+    expect(nums.size).toBe(2)
+    expect(nums.has('13')).toBe(true)
+    expect(nums.has('21')).toBe(true)
+    expect(nums.has('17')).toBe(false)
+  })
+
+  it('チームが見つからない場合は空セットを返す', () => {
+    const html = makeGameRosterHtml([
+      { name: '中日ドラゴンズ', players: [{ num: '13', abbr: '橋本', hand: '左投左打' }] },
+    ])
+    const nums = parseNpbGameRosterHtml(html, '広島')
+    expect(nums.size).toBe(0)
+  })
+
+  it('00番・0番など特殊背番号も正しく取得する', () => {
+    const html = makeGameRosterHtml([
+      { name: '広島東洋カープ', players: [{ num: '00', abbr: '勝田', hand: '右投右打' }, { num: '0', abbr: '勝田', hand: '右投右打' }] },
+    ])
+    const nums = parseNpbGameRosterHtml(html, '広島')
+    expect(nums.has('00')).toBe(true)
+    expect(nums.has('0')).toBe(true)
+  })
+
+  it('teamNameKeyword はh5内容の部分一致で照合される', () => {
+    const html = makeGameRosterHtml([
+      { name: '読売ジャイアンツ', players: [{ num: '6', abbr: '坂本', hand: '右投右打' }] },
+    ])
+    // NPB_TEAM_MAP['巨人'] === '読売ジャイアンツ'
+    const nums = parseNpbGameRosterHtml(html, '読売ジャイアンツ')
+    expect(nums.has('6')).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────
+// fetchNpbRoster – scoreUrl でフィルタリング
+// ─────────────────────────────────────────────
+
+describe('fetchNpbRoster – scoreUrl フィルタリング', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const rosterHtml = makeHtml('広島東洋カープ', [
+    ['投手', '19', '床田　寛樹'],
+    ['投手', '20', '栗林　良吏'],
+    ['捕手', '31', '坂倉　将吾'],
+    ['内野手', '5', '小園　海斗'],
+  ])
+
+  it('scoreUrl指定時は試合rosterに含まれる選手のみ返す', async () => {
+    const gameRosterHtml = makeGameRosterHtml([
+      { name: '広島東洋カープ', players: [
+        { num: '19', abbr: '床田', hand: '左投左打' },
+        { num: '31', abbr: '坂倉', hand: '右投右打' },
+      ]},
+    ])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response) // 公示roster
+      .mockResolvedValueOnce({ ok: true, text: async () => gameRosterHtml } as Response) // 試合roster
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // batting stats
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // pitching stats
+
+    const result = await fetchNpbRoster('広島', 'https://npb.jp/scores/2026/0405/c-t-03/')
+    const numbers = result.map((p) => p.number)
+    expect(numbers).toContain('19')
+    expect(numbers).toContain('31')
+    expect(numbers).not.toContain('20')
+    expect(numbers).not.toContain('5')
+  })
+
+  it('scoreUrl未指定時は公示rosterを全員返す', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response) // 公示roster
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // batting stats
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // pitching stats
+
+    const result = await fetchNpbRoster('広島')
+    expect(result).toHaveLength(4)
+  })
+
+  it('試合roster取得失敗時は公示rosterをそのまま返す', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response) // 公示roster
+      .mockRejectedValueOnce(new Error('Network Error')) // 試合roster失敗
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // batting stats
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // pitching stats
+
+    const result = await fetchNpbRoster('広島', 'https://npb.jp/scores/2026/0405/c-t-03/')
+    expect(result).toHaveLength(4)
+  })
+
+  it('試合rosterがHTTPエラー時は公示rosterをそのまま返す', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response) // 公示roster
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // 試合roster HTTP error
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // batting stats
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // pitching stats
+
+    const result = await fetchNpbRoster('広島', 'https://npb.jp/scores/2026/0405/c-t-03/')
+    expect(result).toHaveLength(4)
+  })
+
+  it('試合rosterの背番号セットが空の場合は公示rosterをそのまま返す', async () => {
+    const emptyGameRosterHtml = makeGameRosterHtml([
+      { name: '阪神タイガース', players: [{ num: '1', abbr: '近本', hand: '右投左打' }] },
+    ])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response) // 公示roster
+      .mockResolvedValueOnce({ ok: true, text: async () => emptyGameRosterHtml } as Response) // 試合roster（広島なし）
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // batting stats
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response) // pitching stats
+
+    const result = await fetchNpbRoster('広島', 'https://npb.jp/scores/2026/0405/c-t-03/')
+    expect(result).toHaveLength(4)
   })
 })

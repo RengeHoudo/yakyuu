@@ -89,7 +89,8 @@ export default function GameControl() {
     setRosterError(null)
     setLoadingTeam(team)
     try {
-      const roster = await fetchNpbRoster(p.name)
+      const validScoreUrl = SCORE_URL_PATTERN.test(scoreUrlInput.trim()) ? scoreUrlInput.trim() : undefined
+      const roster = await fetchNpbRoster(p.name, validScoreUrl)
       if (roster.length > 0) {
         setRoster(team, roster)
       } else {

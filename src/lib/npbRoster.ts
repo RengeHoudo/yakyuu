@@ -1,7 +1,7 @@
 import type { Position, PositionCategory, RosterPlayer } from '../types'
 import { parseInningsPitched } from '../types'
 import { normalizePlayerName } from './csvImport'
-import { fetchNpbRosterPage, fetchNpbStatsPage, fetchNpbScorePage } from './fetchProxy'
+import { fetchNpbRosterPage, fetchNpbStatsPage, fetchNpbScorePage, fetchNpbGameRosterPage } from './fetchProxy'
 
 /**
  * プリセット名 → NPBページ内のチーム見出しキーワード
@@ -433,13 +433,39 @@ export function parseNpbRosterHtml(html: string, teamNameKeyword: string): Roste
 }
 
 /**
+ * NPB試合ベンチ入り選手ページ（roster.html）のHTMLから、指定チームの背番号セットを返す。
+ * @param html scoreUrl + /roster.html の全文
+ * @param teamNameKeyword h5 テキストに含まれるキーワード（例: "広島", "読売ジャイアンツ"）
+ */
+export function parseNpbGameRosterHtml(html: string, teamNameKeyword: string): Set<string> {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+
+  const allHeadings = Array.from(doc.querySelectorAll('h5'))
+  const teamHeading = allHeadings.find((h) => h.textContent?.trim().includes(teamNameKeyword))
+  if (!teamHeading) return new Set()
+
+  const section = teamHeading.closest('.roster_section') ?? teamHeading.closest('div')
+  if (!section) return new Set()
+
+  const numbers = new Set<string>()
+  for (const td of section.querySelectorAll('td.num')) {
+    const num = td.textContent?.trim()
+    if (num) numbers.add(num)
+  }
+  return numbers
+}
+
+/**
  * プリセット名に対応するチームの出場選手名簿をNPBサイトから取得する。
  * - セントラル・パシフィックは空配列を返す（スキップ）
  * - 開発サーバー経由（/api/npb-roster）でCORSを回避する
  * - ネットワークエラーや HTTP エラーは呼び出し元に throw する
  * - 名簿取得後に打撃・投手成績も取得してマージする
+ * @param scoreUrl NPBスコアページURL（例: https://npb.jp/scores/2026/0405/c-t-03/）
+ *   指定時は試合ベンチ入り選手（roster.html）で公示名簿をフィルタリングする。
  */
-export async function fetchNpbRoster(presetName: string): Promise<RosterPlayer[]> {
+export async function fetchNpbRoster(presetName: string, scoreUrl?: string): Promise<RosterPlayer[]> {
   const keyword = NPB_TEAM_MAP[presetName]
   if (keyword === null || keyword === undefined) return []
 
@@ -447,7 +473,23 @@ export async function fetchNpbRoster(presetName: string): Promise<RosterPlayer[]
   const res = await fetchNpbRosterPage()
   if (!res.ok) throw new Error(`NPBサイトへのアクセスに失敗しました (HTTP ${res.status})`)
   const html = await res.text()
-  const players = parseNpbRosterHtml(html, keyword)
+  let players = parseNpbRosterHtml(html, keyword)
+
+  // 試合ベンチ入り選手でフィルタリング（取得失敗時は公示名簿のまま）
+  if (scoreUrl) {
+    try {
+      const gameRes = await fetchNpbGameRosterPage(scoreUrl)
+      if (gameRes.ok) {
+        const gameHtml = await gameRes.text()
+        const gameNumbers = parseNpbGameRosterHtml(gameHtml, keyword)
+        if (gameNumbers.size > 0) {
+          players = players.filter((p) => gameNumbers.has(p.number))
+        }
+      }
+    } catch {
+      // 試合 roster の取得に失敗しても公示名簿をそのまま返す
+    }
+  }
 
   // 成績を非同期フェッチしてマージ（失敗しても名簿だけは返す）
   return fetchNpbStats(presetName, players)
