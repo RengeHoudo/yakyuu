@@ -13,6 +13,7 @@ import EffectOverlay from '../components/overlay/EffectOverlay'
 import Mascot from '../components/overlay/Mascot'
 import WaitingScreen from '../components/overlay/WaitingScreen'
 import FieldingDiagram from '../components/overlay/FieldingDiagram'
+import BoxScoreOverlay from '../components/overlay/BoxScoreOverlay'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -210,6 +211,11 @@ export default function OverlayPage() {
       {/* 守備位置図 */}
       <DraggableBox id="fieldingDiagram" scale={overlayScale}>
         <FieldingDiagram />
+      </DraggableBox>
+
+      {/* ボックススコア（現在の打者の打席結果） */}
+      <DraggableBox id="boxScore" scale={overlayScale}>
+        <BoxScoreOverlay />
       </DraggableBox>
 
       {/* エフェクト — 画面中央 */}

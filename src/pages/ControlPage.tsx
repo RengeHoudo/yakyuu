@@ -12,6 +12,8 @@ import EffectControl from '../components/control/EffectControl'
 import MascotControl from '../components/control/MascotControl'
 import { useGameStore, extractGameState } from '../store/useGameStore'
 import { broadcastState, onStateRequest, onPositionUpdate } from '../lib/sync'
+import { fetchBoxScorePage } from '../lib/fetchProxy'
+import { parseBoxScoreHtml } from '../lib/boxScore'
 
 /** コントロール側から定期的にフルステートをブロードキャストする。 */
 function usePeriodicBroadcast() {
@@ -21,6 +23,34 @@ function usePeriodicBroadcast() {
     }, 2000)
     return () => clearInterval(id)
   }, [])
+}
+
+const BOX_SCORE_INTERVAL_MS = 3 * 60 * 1000 // 3分
+
+/** ボックススコアを3分ごとに自動取得し、storeに保存するフック */
+function useBoxScorePolling() {
+  const scoreUrl = useGameStore((s) => s.scoreUrl)
+  const setBoxScoreData = useGameStore((s) => s.setBoxScoreData)
+
+  useEffect(() => {
+    if (!scoreUrl) return
+
+    async function fetch_() {
+      try {
+        const res = await fetchBoxScorePage(scoreUrl)
+        if (!res.ok) return
+        const html = await res.text()
+        const data = parseBoxScoreHtml(html)
+        setBoxScoreData({ ...data, fetchedAt: Date.now() })
+      } catch {
+        // ネットワークエラーは無視（次回ポーリングで再試行）
+      }
+    }
+
+    fetch_()
+    const id = setInterval(fetch_, BOX_SCORE_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [scoreUrl, setBoxScoreData])
 }
 
 interface Section {
@@ -43,6 +73,7 @@ function saveOrder(order: string[]) {
 }
 
 export default function ControlPage() {
+  useBoxScorePolling()
   useEffect(() => {
     const unsubRequest = onStateRequest(() => {
       broadcastState(extractGameState(useGameStore.getState()))

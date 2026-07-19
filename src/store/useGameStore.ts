@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { BatterGameStats, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
+import type { BatterGameStats, BoxScoreData, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
 import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
@@ -29,7 +29,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'overlayOpacity', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
   'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
-  'batterGameStats',
+  'batterGameStats', 'boxScoreData',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -410,6 +410,8 @@ interface GameActions {
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
   /** NPBスコアページURLをセットする */
   setScoreUrl: (url: string) => void
+  /** ボックススコアデータをセットする */
+  setBoxScoreData: (data: BoxScoreData | null) => void
   /** 打者の試合内成績を直接セット（0から編集可能） */
   setLineupPlayerGameStats: (team: 'away' | 'home', index: number, stats: {
     gameAtBats: number
@@ -665,6 +667,8 @@ export const useGameStore = create<GameStore>()(
         })),
 
       setScoreUrl: (url) => set({ scoreUrl: url }),
+
+      setBoxScoreData: (data) => set({ boxScoreData: data }),
 
       addRun: (team) =>
         set((s) => {

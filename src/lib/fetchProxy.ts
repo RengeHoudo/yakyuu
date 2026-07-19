@@ -48,3 +48,19 @@ export function fetchNpbScorePage(year: string, date: string, homeCode: string, 
   }
   return fetch(`/api/npb-scores/${year}/${date}/${homeCode}-${awayCode}-${gameNum}/`, NO_CACHE)
 }
+
+/**
+ * NPBボックススコアページ（box.html）を取得する。
+ * scoreUrl には末尾スラッシュあり・なし両方対応。
+ * 3分ごとのポーリングに使用するため、キャッシュは必ず無効化する。
+ */
+export function fetchBoxScorePage(scoreUrl: string): Promise<Response> {
+  const base = scoreUrl.endsWith('/') ? scoreUrl : scoreUrl + '/'
+  const boxUrl = base + 'box.html'
+  if (isProduction()) {
+    return fetch(buildCorsProxyUrl(boxUrl), NO_CACHE)
+  }
+  // 開発時: Vite dev proxy (/api/npb-scores/ → https://npb.jp/scores/)
+  const devPath = boxUrl.replace('https://npb.jp/scores/', '/api/npb-scores/')
+  return fetch(devPath, NO_CACHE)
+}

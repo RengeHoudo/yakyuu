@@ -188,6 +188,29 @@ export interface PlayLogEntry {
   text: string
 }
 
+/** 打席結果の種別 */
+export type AtBatResultType = 'hit' | 'walk' | 'sacrifice' | 'out'
+
+/** 1打席の結果 */
+export interface AtBatResult {
+  text: string
+  type: AtBatResultType
+}
+
+/** 1打者のボックススコア */
+export interface BatterBoxScore {
+  order: number
+  name: string
+  results: AtBatResult[]
+}
+
+/** ボックススコアデータ */
+export interface BoxScoreData {
+  away: BatterBoxScore[]
+  home: BatterBoxScore[]
+  fetchedAt: number
+}
+
 /** 打者の試合中成績トラッキング用。キー形式: "${team}-${number}" で GameState.batterGameStats に格納 */
 export interface BatterGameStats {
   gameAtBats: number
@@ -314,8 +337,9 @@ export interface GameState {
   pitcherHistory: PitcherAppearance[]
   /** 打者ごとの試合中成績。キー形式: "${team}-${number}" (例: "away-3") */
   batterGameStats: Record<string, BatterGameStats>
+  /** NPBボックススコアから取得した打席結果。3分ごとに自動更新 */
+  boxScoreData: BoxScoreData | null
 }
-
 /**
  * 選手名から表示用の短縮名を抽出する。
  * - "秋山 翔吾" → "秋山"  (苗字のみ)
@@ -696,6 +720,8 @@ export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
   playLog: { x: 1560, y: 800 },
   mascot: { x: 1740, y: 900 },
   fieldingDiagram: { x: 1680, y: 24 },
+  batterAtBats: { x: 24, y: 200 },
+  boxScore: { x: 24, y: 240 },
 }
 
 export const initialGameState: GameState = {
@@ -743,6 +769,7 @@ export const initialGameState: GameState = {
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
   pitcherHistory: [],
+  boxScoreData: null,
 }
 
 export { emptyLineup }
