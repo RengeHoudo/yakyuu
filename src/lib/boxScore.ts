@@ -50,6 +50,8 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
 
     const rows = table.querySelectorAll('tbody tr')
     const batters: BatterBoxScore[] = []
+    // 直前の打順番号を記憶（代打・打者交代行はこの番号を引き継ぐ）
+    let currentOrder = 0
 
     for (const row of rows) {
       const tds = row.querySelectorAll('td')
@@ -58,8 +60,14 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
 
       const orderText = tds[0]?.textContent?.trim() ?? ''
       const order = parseInt(orderText, 10)
-      // 打順番号のない行（代打・代走・投手交代等）はスキップ
-      if (!order || isNaN(order)) continue
+
+      if (!isNaN(order) && order > 0) {
+        // 打順番号ありの行：先発打者
+        currentOrder = order
+      } else if (currentOrder === 0) {
+        // まだ打順が確定していない（先頭行より前）はスキップ
+        continue
+      }
 
       const nameEl = tds[2]?.querySelector('a')
       const name = (nameEl?.textContent ?? tds[2]?.textContent ?? '').trim()
@@ -75,7 +83,14 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
         results.push({ text, type: classifyResult(td.className) })
       }
 
-      batters.push({ order, name, results })
+      if (!isNaN(order) && order > 0) {
+        // 先発打者は常に含める
+        batters.push({ order: currentOrder, name, results })
+      } else if (results.length > 0) {
+        // 代打・打者交代等、打順番号なしだが打席結果がある選手を含める
+        batters.push({ order: currentOrder, name, results })
+      }
+      // 打席結果なし（投手交代のみ等）はスキップ
     }
 
     return batters

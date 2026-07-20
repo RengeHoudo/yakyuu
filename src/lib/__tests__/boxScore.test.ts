@@ -107,7 +107,7 @@ describe('parseBoxScoreHtml', () => {
     expect(result.away[0]!.results[1]).toEqual({ text: '右前安', type: 'hit' })
   })
 
-  it('打順番号がない行（代打・投手等）はスキップされる', () => {
+  it('打順番号がない行でも打席結果がある代打・打者交代は直前の打順番号で含まれる', () => {
     const html = makeBoxHtml(
       [
         {
@@ -124,8 +124,32 @@ describe('parseBoxScoreHtml', () => {
       [],
     )
     const result = parseBoxScoreHtml(html)
-    expect(result.away).toHaveLength(1)
+    expect(result.away).toHaveLength(2)
     expect(result.away[0]!.name).toBe('近本')
+    expect(result.away[1]!.name).toBe('代打選手')
+    expect(result.away[1]!.order).toBe(1)
+    expect(result.away[1]!.results[0]).toEqual({ text: '右前安', type: 'hit' })
+  })
+
+  it('打順番号がなく打席結果もない行（投手交代等）はスキップされる', () => {
+    const html = makeBoxHtml(
+      [
+        {
+          order: '9',
+          name: '床田',
+          cells: [{ cls: '', text: '三振' }],
+        },
+        {
+          order: '',
+          name: '辻',
+          cells: [],
+        },
+      ],
+      [],
+    )
+    const result = parseBoxScoreHtml(html)
+    expect(result.away).toHaveLength(1)
+    expect(result.away[0]!.name).toBe('床田')
   })
 
   it('全角スペースを含む結果テキストを正規化する', () => {
@@ -205,5 +229,67 @@ describe('parseBoxScoreHtml', () => {
     const result = parseBoxScoreHtml('<html><body></body></html>')
     expect(result.away).toHaveLength(0)
     expect(result.home).toHaveLength(0)
+  })
+
+  it('打者交代（岸田→大城）のケースで大城の成績が含まれる', () => {
+    const html = makeBoxHtml(
+      [],
+      [
+        {
+          order: '3',
+          name: '岸田',
+          cells: [{ cls: '', text: '遊ゴロ' }],
+        },
+        {
+          order: '',
+          name: '大城',
+          cells: [
+            { cls: ' hit Red', text: '右前安' },
+            { cls: ' hit Red', text: '右前安' },
+            { cls: '', text: '三振' },
+          ],
+        },
+      ],
+    )
+    const result = parseBoxScoreHtml(html)
+    expect(result.home).toHaveLength(2)
+    expect(result.home[0]!.name).toBe('岸田')
+    expect(result.home[0]!.order).toBe(3)
+    expect(result.home[1]!.name).toBe('大城')
+    expect(result.home[1]!.order).toBe(3)
+    expect(result.home[1]!.results).toHaveLength(3)
+    expect(result.home[1]!.results[0]).toEqual({ text: '右前安', type: 'hit' })
+  })
+
+  it('複数回の選手交代でも各選手の成績が正しく登録される', () => {
+    const html = makeBoxHtml(
+      [
+        {
+          order: '9',
+          name: '床田',
+          cells: [
+            { cls: '', text: '三飛' },
+            { cls: '', text: '三振' },
+          ],
+        },
+        {
+          order: '',
+          name: '前川',
+          cells: [{ cls: ' walk Blue', text: '四球' }],
+        },
+        {
+          order: '',
+          name: '辻',
+          cells: [],
+        },
+      ],
+      [],
+    )
+    const result = parseBoxScoreHtml(html)
+    expect(result.away).toHaveLength(2)
+    expect(result.away[0]!.name).toBe('床田')
+    expect(result.away[1]!.name).toBe('前川')
+    expect(result.away[1]!.order).toBe(9)
+    expect(result.away[1]!.results[0]).toEqual({ text: '四球', type: 'walk' })
   })
 })
