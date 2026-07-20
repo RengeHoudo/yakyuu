@@ -189,7 +189,7 @@ export interface PlayLogEntry {
 }
 
 /** 打席結果の種別 */
-export type AtBatResultType = 'hit' | 'walk' | 'sacrifice' | 'out'
+export type AtBatResultType = 'homerun' | 'hit' | 'walk' | 'sacrifice' | 'out'
 
 /** 1打席の結果 */
 export interface AtBatResult {

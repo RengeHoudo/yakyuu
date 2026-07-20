@@ -4,9 +4,10 @@ import type { AtBatResult } from '../../lib/boxScore'
 /** 打席結果タイプに応じた背景・文字色クラスを返す */
 function resultStyle(type: AtBatResult['type']): string {
   switch (type) {
+    case 'homerun':   return 'bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 text-red-600 font-bold'
     case 'hit':       return 'bg-[rgb(255,100,100)] text-black'
     case 'walk':      return 'bg-green-500 text-black'
-    case 'sacrifice': return 'bg-yellow-400 text-black'
+    case 'sacrifice': return 'bg-blue-400 text-black'
     case 'out':       return 'bg-[rgb(180,180,180)] text-black'
   }
 }

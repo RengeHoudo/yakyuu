@@ -42,6 +42,18 @@ describe('classifyResult', () => {
     expect(classifyResult(' hit Red rbi')).toBe('hit')
   })
 
+  it('hit Red かつテキストに本を含む → homerun', () => {
+    expect(classifyResult(' hit Red', '左越本①')).toBe('homerun')
+    expect(classifyResult(' hit Red rbi', '中越本')).toBe('homerun')
+    expect(classifyResult(' hit Red', '右本')).toBe('homerun')
+  })
+
+  it('テキストなし・本なしの hit Red は homerun にならない', () => {
+    expect(classifyResult(' hit Red')).toBe('hit')
+    expect(classifyResult(' hit Red', '左前安')).toBe('hit')
+    expect(classifyResult(' hit Red rbi', '左線２③')).toBe('hit')
+  })
+
   it('walk Blue → walk', () => {
     expect(classifyResult(' walk Blue')).toBe('walk')
   })
@@ -222,7 +234,7 @@ describe('parseBoxScoreHtml', () => {
     expect(result.home).toHaveLength(1)
     expect(result.home[0]!.order).toBe(3)
     expect(result.home[0]!.name).toBe('坂倉')
-    expect(result.home[0]!.results[0]!.type).toBe('hit')
+    expect(result.home[0]!.results[0]!.type).toBe('homerun')
   })
 
   it('テーブルが存在しない場合は空配列を返す', () => {

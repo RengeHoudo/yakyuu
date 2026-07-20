@@ -23,14 +23,18 @@ export function normalizeResultText(text: string): string {
 }
 
 /**
- * NPBボックススコアの td クラス名から打席結果タイプを判定する。
+ * NPBボックススコアの td クラス名と結果テキストから打席結果タイプを判定する。
+ * - ` hit Red` かつテキストに「本」を含む → `homerun`
  * - ` hit Red` → `hit`
  * - ` walk Blue` → `walk`
  * - ` Green` → `sacrifice`
  * - その他 → `out`
  */
-export function classifyResult(className: string): AtBatResultType {
-  if (className.includes('hit') && className.includes('Red')) return 'hit'
+export function classifyResult(className: string, text?: string): AtBatResultType {
+  if (className.includes('hit') && className.includes('Red')) {
+    if (text && text.includes('本')) return 'homerun'
+    return 'hit'
+  }
   if (className.includes('walk') && className.includes('Blue')) return 'walk'
   if (className.includes('Green')) return 'sacrifice'
   return 'out'
@@ -80,7 +84,7 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
         const raw = td.textContent ?? ''
         const text = normalizeResultText(raw)
         if (!text || text === '-') continue
-        results.push({ text, type: classifyResult(td.className) })
+        results.push({ text, type: classifyResult(td.className, text) })
       }
 
       if (!isNaN(order) && order > 0) {
