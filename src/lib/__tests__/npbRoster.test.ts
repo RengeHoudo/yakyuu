@@ -673,6 +673,30 @@ describe('parseScorePageLineup', () => {
     expect(away[0]).toEqual({ order: 1, position: 'DH', name: '近藤' })
   })
 
+  it('DH制の空打順に記載された投手を10番目として抽出する', () => {
+    const html = `<html><body>
+      <div id="player-order">
+        <div class="half_left">
+          <table>
+            <tr><th>5</th><th>DH</th><td>櫻井</td></tr>
+            <tr><th>&nbsp;</th><th>投</th><td>杉山</td></tr>
+          </table>
+        </div>
+        <div class="half_right">
+          <table>
+            <tr><th>4</th><th>DH</th><td>佐々木</td></tr>
+            <tr><th>&nbsp;</th><th>投</th><td>齊藤汰</td></tr>
+          </table>
+        </div>
+      </div>
+    </body></html>`
+
+    const [away, home] = parseScorePageLineup(html)
+
+    expect(away).toContainEqual({ order: 10, position: '投', name: '杉山' })
+    expect(home).toContainEqual({ order: 10, position: '投', name: '齊藤汰' })
+  })
+
   it('複数回の代打がある場合、最終的な選手のみ残る', () => {
     const html = makeScoreHtml(
       [

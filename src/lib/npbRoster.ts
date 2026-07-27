@@ -549,12 +549,13 @@ export function parseScorePageLineup(html: string): [ScoreLineupEntry[], ScoreLi
       const tds = row.querySelectorAll('td')
       if (ths.length < 2 || tds.length < 1) continue
 
-      const orderNum = parseInt(ths[0]?.textContent?.trim() ?? '', 10)
-      if (isNaN(orderNum) || orderNum < 1 || orderNum > 9) continue
-
       const posRaw = ths[1]?.textContent?.trim() ?? ''
       const isSubstitution = SUBSTITUTION_POSITIONS.has(posRaw)
       const position: Position = isSubstitution ? '代' : (SCORE_POSITION_MAP[posRaw] ?? '')
+      const parsedOrder = parseInt(ths[0]?.textContent?.trim() ?? '', 10)
+      // DH制では投手が打順外の空欄行に記載されるため、専用の10番目として扱う。
+      const orderNum = isNaN(parsedOrder) && position === '投' ? 10 : parsedOrder
+      if (isNaN(orderNum) || orderNum < 1 || orderNum > 10) continue
 
       // 選手名は <a> タグ内、またはプレーンテキスト
       const nameEl = tds[0]?.querySelector('a') ?? tds[0]

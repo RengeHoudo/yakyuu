@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { formatRosterOptionLabel, sortedRoster, rosterPitcherToLineupFields } from '../LineupControl'
-import type { PositionCategory, RosterPlayer } from '../../../types'
+import { applyScorePageLineup, formatRosterOptionLabel, sortedRoster, rosterPitcherToLineupFields } from '../LineupControl'
+import type { LineupPlayer, PositionCategory, RosterPlayer } from '../../../types'
 
 describe('formatRosterOptionLabel', () => {
   it('内野手: 姓 名  [ 番号 ] の形式でフォーマットされる', () => {
@@ -139,5 +139,117 @@ describe('rosterPitcherToLineupFields', () => {
     const fields = rosterPitcherToLineupFields(r)
     expect(fields.appearances).toBe('')
     expect(fields.record).toBe('')
+  })
+})
+
+const emptyLineup = (): LineupPlayer[] => Array.from({ length: 10 }, (_, index) => ({
+  order: index + 1,
+  name: '',
+  number: '',
+  position: index === 9 ? '投' : '',
+}))
+
+describe('applyScorePageLineup', () => {
+  it('オールスターで名簿がなくても打順外の投手名を10番目に反映する', () => {
+    const result = applyScorePageLineup(
+      emptyLineup(),
+      [
+        { order: 5, position: 'DH', name: '櫻井' },
+        { order: 10, position: '投', name: '杉山' },
+      ],
+      [],
+    )
+
+    expect(result[4]).toMatchObject({
+      order: 5,
+      position: 'DH',
+      name: '櫻井',
+    })
+    expect(result[9]).toMatchObject({
+      order: 10,
+      position: '投',
+      name: '杉山',
+    })
+  })
+
+  it('DH制では10番目の投手を更新し、DH打者を打順内に保持する', () => {
+    const roster: RosterPlayer[] = [
+      {
+        positionCategory: '外野手',
+        number: '12',
+        name: '櫻井 ユウヤ',
+        battingAvg: '.300',
+      },
+      {
+        positionCategory: '投手',
+        number: '15',
+        name: '杉山 遙希',
+        appearances: '10',
+        wins: '5',
+        losses: '1',
+        era: '1.50',
+      },
+    ]
+
+    const result = applyScorePageLineup(
+      emptyLineup(),
+      [
+        { order: 5, position: 'DH', name: '櫻井' },
+        { order: 10, position: '投', name: '杉山' },
+      ],
+      roster,
+    )
+
+    expect(result[4]).toMatchObject({
+      order: 5,
+      position: 'DH',
+      name: '櫻井 ユウヤ',
+      number: '12',
+    })
+    expect(result[9]).toMatchObject({
+      order: 10,
+      position: '投',
+      name: '杉山 遙希',
+      number: '15',
+      appearances: '10',
+      wins: '5',
+      losses: '1',
+      era: '1.50',
+    })
+  })
+
+  it('セ・リーグ型では打順内の投手を打者欄と10番目の両方に反映する', () => {
+    const roster: RosterPlayer[] = [{
+      positionCategory: '投手',
+      number: '18',
+      name: '森下 暢仁',
+      battingAvg: '.167',
+      appearances: '22',
+      wins: '10',
+      losses: '5',
+    }]
+
+    const result = applyScorePageLineup(
+      emptyLineup(),
+      [{ order: 9, position: '投', name: '森下' }],
+      roster,
+    )
+
+    expect(result[8]).toMatchObject({
+      order: 9,
+      position: '投',
+      name: '森下 暢仁',
+      number: '18',
+      battingAvg: '.167',
+    })
+    expect(result[9]).toMatchObject({
+      order: 10,
+      position: '投',
+      name: '森下 暢仁',
+      number: '18',
+      appearances: '22',
+      wins: '10',
+      losses: '5',
+    })
   })
 })

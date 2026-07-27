@@ -5,6 +5,7 @@ import type { LineupPlayer, PitcherAppearance, PitcherGameStats, Position, Posit
 import { defaultPitcherGameStats, formatPitcherGameSummary, formatOutsAsInnings, computeLiveEra, computeLiveWhip } from '../../types'
 import { parseLineupCsv, parseRosterCsv } from '../../lib/csvImport'
 import { fetchScorePageLineup, matchAbbreviatedName } from '../../lib/npbRoster'
+import type { ScoreLineupEntry } from '../../lib/npbRoster'
 
 // ─────────────────────────────────────────────
 // 試合内成績編集モーダル
@@ -277,6 +278,131 @@ export function rosterPitcherToLineupFields(r: RosterPlayer): Partial<LineupPlay
     onBasePct: r.onBasePct,
     batHand: r.batHand,
   }
+}
+
+/** RosterPlayer（打者）を LineupPlayer の通算成績フィールドにマップする。 */
+function rosterBatterToLineupFields(r: RosterPlayer): Partial<LineupPlayer> {
+  return {
+    battingAvg: r.battingAvg ?? '',
+    homeRuns: r.homeRuns ?? '',
+    rbi: r.rbi ?? '',
+    ops: r.ops ?? '',
+    games: r.games,
+    plateAppearances: r.plateAppearances,
+    atBats: r.atBats,
+    runs: r.runs,
+    hits: r.hits,
+    doubles: r.doubles,
+    triples: r.triples,
+    totalBases: r.totalBases,
+    stolenBases: r.stolenBases,
+    caughtStealing: r.caughtStealing,
+    sacrificeHits: r.sacrificeHits,
+    sacrificeFlies: r.sacrificeFlies,
+    walks: r.walks,
+    intentionalWalks: r.intentionalWalks,
+    hitByPitch: r.hitByPitch,
+    strikeouts: r.strikeouts,
+    groundedIntoDoublePlays: r.groundedIntoDoublePlays,
+    sluggingPct: r.sluggingPct,
+    onBasePct: r.onBasePct,
+  }
+}
+
+/**
+ * NPBスコアページから取得したオーダーをラインナップへ反映する。
+ * 1〜9番は打者欄、10番はDH制で打順外となる投手専用欄として扱う。
+ */
+export function applyScorePageLineup(
+  lineup: LineupPlayer[],
+  entries: ScoreLineupEntry[],
+  roster: RosterPlayer[],
+): LineupPlayer[] {
+  const nextLineup = [...lineup]
+
+  const updatePitcher = (entry: ScoreLineupEntry, matched: RosterPlayer | null) => {
+    const existingPitcher = nextLineup[9]
+    if (!existingPitcher) return
+
+    if (!matched) {
+      nextLineup[9] = {
+        ...existingPitcher,
+        order: 10,
+        name: entry.name,
+        position: '投',
+      }
+      return
+    }
+
+    const isSamePitcher =
+      existingPitcher.name === matched.name && existingPitcher.number === matched.number
+    nextLineup[9] = {
+      ...existingPitcher,
+      order: 10,
+      name: matched.name,
+      number: matched.number,
+      position: '投',
+      npbDisplayName: entry.name,
+      throwHand: matched.throwHand,
+      batHand: matched.batHand,
+      switchHitter: matched.batHand === 'S',
+      ...(isSamePitcher ? {} : rosterPitcherToLineupFields(matched)),
+    }
+  }
+
+  for (const entry of entries) {
+    if (entry.order === 10) {
+      if (entry.position !== '投') continue
+      const matched = roster.length > 0 ? matchAbbreviatedName(entry.name, roster) : null
+      updatePitcher(entry, matched)
+      continue
+    }
+
+    const idx = entry.order - 1
+    if (idx < 0 || idx > 8) continue
+
+    const matched = roster.length > 0 ? matchAbbreviatedName(entry.name, roster) : null
+    const existing = nextLineup[idx]
+    if (!existing) continue
+
+    if (matched) {
+      const isPitcher = matched.positionCategory === '投手'
+      const isSamePlayer = existing.name === matched.name && existing.number === matched.number
+      nextLineup[idx] = {
+        ...existing,
+        order: entry.order,
+        position: entry.position,
+        name: matched.name,
+        number: matched.number,
+        npbDisplayName: entry.name,
+        batHand: matched.batHand,
+        throwHand: matched.throwHand,
+        switchHitter: matched.batHand === 'S',
+        ...(isSamePlayer
+          ? {}
+          : isPitcher
+            ? rosterPitcherToLineupFields(matched)
+            : rosterBatterToLineupFields(matched)),
+      }
+
+      if (isPitcher && entry.position === '投') {
+        updatePitcher(entry, matched)
+      }
+    } else {
+      nextLineup[idx] = {
+        ...existing,
+        order: entry.order,
+        position: entry.position,
+        name: entry.name,
+      }
+
+      if (entry.position === '投') {
+        updatePitcher(entry, null)
+      }
+    }
+  }
+
+  return nextLineup
 }
 
 function BatterRow({
@@ -736,124 +862,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
         return
       }
 
-      const currentLineup = [...lineup]
-      for (const entry of entries) {
-        const idx = entry.order - 1
-        if (idx < 0 || idx > 8) continue
-
-        // ロスターとのマッチング
-        const matched = roster.length > 0 ? matchAbbreviatedName(entry.name, roster) : null
-        const existing = currentLineup[idx]!
-        // 同じ選手が既にセットされている場合、成績は保持する
-        const isSamePlayer = matched
-          ? (existing.name === matched.name && existing.number === matched.number)
-          : false
-
-        if (matched) {
-          // ロスターからフル情報を取得
-          const isPitcher = matched.positionCategory === '投手'
-          currentLineup[idx] = {
-            ...existing,
-            order: entry.order,
-            position: entry.position,
-            name: matched.name,
-            number: matched.number,
-            npbDisplayName: entry.name,
-            // 打投左右は静的属性なので常に更新
-            batHand: matched.batHand,
-            throwHand: matched.throwHand,
-            switchHitter: matched.batHand === 'S',
-            ...(isPitcher || isSamePlayer ? {} : {
-              battingAvg: matched.battingAvg ?? '',
-              homeRuns: matched.homeRuns ?? '',
-              rbi: matched.rbi ?? '',
-              ops: matched.ops ?? '',
-              games: matched.games,
-              plateAppearances: matched.plateAppearances,
-              atBats: matched.atBats,
-              runs: matched.runs,
-              hits: matched.hits,
-              doubles: matched.doubles,
-              triples: matched.triples,
-              totalBases: matched.totalBases,
-              stolenBases: matched.stolenBases,
-              caughtStealing: matched.caughtStealing,
-              sacrificeHits: matched.sacrificeHits,
-              sacrificeFlies: matched.sacrificeFlies,
-              walks: matched.walks,
-              intentionalWalks: matched.intentionalWalks,
-              hitByPitch: matched.hitByPitch,
-              strikeouts: matched.strikeouts,
-              groundedIntoDoublePlays: matched.groundedIntoDoublePlays,
-              sluggingPct: matched.sluggingPct,
-              onBasePct: matched.onBasePct,
-            }),
-          }
-
-          // 投手が1-9番に入っている場合、10番にも投手としてセット
-          if (isPitcher && entry.position === '投') {
-            const existingPitcher = currentLineup[9]!
-            const isSamePitcher = existingPitcher.name === matched.name && existingPitcher.number === matched.number
-            currentLineup[9] = {
-              ...existingPitcher,
-              name: matched.name,
-              number: matched.number,
-              position: '投',
-            // 打投左右は静的属性なので常に更新
-              throwHand: matched.throwHand,
-              batHand: matched.batHand,
-              switchHitter: matched.batHand === 'S',
-              // 同じ投手なら試合中の成績を保持
-              ...(isSamePitcher ? {} : {
-                appearances: matched.appearances ?? '',
-                record: matched.record ?? '',
-                wins: matched.wins,
-                losses: matched.losses,
-                saves: matched.saves,
-                holds: matched.holds,
-                holdPoints: matched.holdPoints,
-                completeGames: matched.completeGames,
-                shutouts: matched.shutouts,
-                noWalkGames: matched.noWalkGames,
-                winPct: matched.winPct,
-                battersFaced: matched.battersFaced,
-                inningsPitched: matched.inningsPitched,
-                hitsAllowed: matched.hitsAllowed,
-                homeRunsAllowed: matched.homeRunsAllowed,
-                walksAllowed: matched.walksAllowed,
-                intentionalWalksAllowed: matched.intentionalWalksAllowed,
-                hitByPitchAllowed: matched.hitByPitchAllowed,
-                strikeoutsThrown: matched.strikeoutsThrown,
-                wildPitches: matched.wildPitches,
-                balks: matched.balks,
-                runsAllowed: matched.runsAllowed,
-                earnedRuns: matched.earnedRuns,
-                era: matched.era,
-                whip: matched.whip,
-                throwHand: matched.throwHand,
-              }),
-            }
-          }
-        } else {
-          // ロスターなし：スコアページの名前だけセット
-          currentLineup[idx] = {
-            ...currentLineup[idx]!,
-            order: entry.order,
-            position: entry.position,
-            name: entry.name,
-          }
-
-          if (entry.position === '投') {
-            currentLineup[9] = {
-              ...currentLineup[9]!,
-              name: entry.name,
-              position: '投',
-            }
-          }
-        }
-      }
-
-      setLineup(side, currentLineup)
+      setLineup(side, applyScorePageLineup(lineup, entries, roster))
     } catch (err) {
       setCsvError(err instanceof Error ? err.message : '打順の取得に失敗しました')
     } finally {
