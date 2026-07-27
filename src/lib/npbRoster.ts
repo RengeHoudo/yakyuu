@@ -1,13 +1,19 @@
 import type { Position, PositionCategory, RosterPlayer } from '../types'
 import { parseInningsPitched } from '../types'
 import { normalizePlayerName } from './csvImport'
-import { fetchNpbRosterPage, fetchNpbStatsPage, fetchNpbScorePage, fetchNpbGameRosterPage } from './fetchProxy'
+import {
+  fetchNpbEventRosterPage,
+  fetchNpbGameRosterPage,
+  fetchNpbRosterPage,
+  fetchNpbScorePage,
+  fetchNpbStatsPage,
+} from './fetchProxy'
 
 /**
  * プリセット名 → NPBページ内のチーム見出しキーワード
- * null: 非対応（セントラル・パシフィック等）、undefined: 未知のプリセット
+ * undefined: 未知のプリセット
  */
-export const NPB_TEAM_MAP: Record<string, string | null> = {
+export const NPB_TEAM_MAP: Record<string, string> = {
   広島: '広島',
   巨人: '読売ジャイアンツ',
   阪神: '阪神',
@@ -20,8 +26,8 @@ export const NPB_TEAM_MAP: Record<string, string | null> = {
   楽天: '楽天',
   日本ハム: '日本ハム',
   西武: '西武',
-  セントラル: null,
-  パシフィック: null,
+  Central: 'セントラル・リーグ',
+  Pacific: 'パシフィック・リーグ',
 }
 
 /** プリセット名 → NPB成績ページのチームコード */
@@ -432,6 +438,74 @@ export function parseNpbRosterHtml(html: string, teamNameKeyword: string): Roste
   return players
 }
 
+export type NpbAllStarType = 'allstar' | 'freshas'
+
+/**
+ * スコアページの試合見出しから通常／フレッシュオールスターを判別する。
+ * 共通ナビにも両イベントへのリンクがあるため、本文全体ではなく対戦見出しだけを見る。
+ */
+export function detectNpbAllStarType(html: string): NpbAllStarType | null {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const gameHeading = Array.from(doc.querySelectorAll('h3'))
+    .map((heading) => heading.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+    .find((heading) => heading.includes('vs'))
+
+  if (!gameHeading) return null
+  if (gameHeading.includes('フレッシュオールスター')) return 'freshas'
+  if (gameHeading.includes('オールスター')) return 'allstar'
+  return null
+}
+
+function eventPositionCategory(position: string): PositionCategory | null {
+  if (position.includes('投手')) return '投手'
+  if (position === '捕手' || position === '内野手' || position === '外野手') {
+    return position
+  }
+  return null
+}
+
+/**
+ * オールスター／フレッシュオールスター出場者ページから指定リーグの選手を抽出する。
+ * 通常版の背番号列は .number、フレッシュ版は .num なので両方に対応する。
+ */
+export function parseNpbEventRosterHtml(html: string, teamNameKeyword: string): RosterPlayer[] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const teamHeading = Array.from(doc.querySelectorAll('h5'))
+    .find((heading) => heading.textContent?.trim().includes(teamNameKeyword))
+  if (!teamHeading) return []
+
+  const section = teamHeading.closest('.half_left, .half_right')
+    ?? teamHeading.closest('.player_wrap, .wrap, section, div')
+  const table = section?.querySelector('table')
+  if (!table) return []
+
+  const players: RosterPlayer[] = []
+  let positionCategory: PositionCategory | null = null
+
+  for (const row of table.querySelectorAll('tr')) {
+    const positionHeading = row.querySelector('th.position')
+    if (positionHeading) {
+      positionCategory = eventPositionCategory(positionHeading.textContent?.trim() ?? '')
+      continue
+    }
+    if (!positionCategory || row.classList.contains('absence')) continue
+
+    const name = row.querySelector('td.name')?.textContent?.trim() ?? ''
+    const number = row.querySelector('td.number, td.num')?.textContent?.trim() ?? ''
+    if (!name || !number) continue
+
+    players.push({
+      positionCategory,
+      number,
+      name: normalizePlayerName(name),
+    })
+  }
+
+  return players
+}
+
 /**
  * NPB試合ベンチ入り選手ページ（roster.html）のHTMLから、指定チームの背番号セットを返す。
  * @param html scoreUrl + /roster.html の全文
@@ -458,7 +532,7 @@ export function parseNpbGameRosterHtml(html: string, teamNameKeyword: string): S
 
 /**
  * プリセット名に対応するチームの出場選手名簿をNPBサイトから取得する。
- * - セントラル・パシフィックは空配列を返す（スキップ）
+ * - Central・Pacificはスコアページから通常／フレッシュを判別してイベント名簿を取得する
  * - 開発サーバー経由（/api/npb-roster）でCORSを回避する
  * - ネットワークエラーや HTTP エラーは呼び出し元に throw する
  * - 名簿取得後に打撃・投手成績も取得してマージする
@@ -467,7 +541,36 @@ export function parseNpbGameRosterHtml(html: string, teamNameKeyword: string): S
  */
 export async function fetchNpbRoster(presetName: string, scoreUrl?: string): Promise<RosterPlayer[]> {
   const keyword = NPB_TEAM_MAP[presetName]
-  if (keyword === null || keyword === undefined) return []
+  if (keyword === undefined) return []
+
+  if (presetName === 'Central' || presetName === 'Pacific') {
+    if (!scoreUrl) return []
+    const score = parseScoreUrl(scoreUrl)
+    if (!score || !['cl', 'pl'].includes(score.homeCode) || !['cl', 'pl'].includes(score.awayCode)) {
+      return []
+    }
+
+    const scoreRes = await fetchNpbScorePage(
+      score.year,
+      score.date,
+      score.homeCode,
+      score.awayCode,
+      score.gameNum,
+    )
+    if (!scoreRes.ok) {
+      throw new Error(`NPBスコアページへのアクセスに失敗しました (HTTP ${scoreRes.status})`)
+    }
+    const eventType = detectNpbAllStarType(await scoreRes.text())
+    if (!eventType) {
+      throw new Error('NPBスコアページからオールスターの種別を判別できませんでした')
+    }
+
+    const eventRosterRes = await fetchNpbEventRosterPage(eventType, score.year)
+    if (!eventRosterRes.ok) {
+      throw new Error(`NPBオールスター名簿へのアクセスに失敗しました (HTTP ${eventRosterRes.status})`)
+    }
+    return parseNpbEventRosterHtml(await eventRosterRes.text(), keyword)
+  }
 
   // Vite dev proxy or CORS proxy in production
   const res = await fetchNpbRosterPage()
@@ -499,6 +602,8 @@ export async function fetchNpbRoster(presetName: string, scoreUrl?: string): Pro
 export const NPB_CODE_TO_TEAM_MAP: Record<string, string> = Object.fromEntries(
   Object.entries(NPB_STATS_CODE_MAP).map(([name, code]) => [code, name]),
 )
+NPB_CODE_TO_TEAM_MAP.cl = 'Central'
+NPB_CODE_TO_TEAM_MAP.pl = 'Pacific'
 
 /** NPBスコアページURLのバリデーション正規表現 */
 export const SCORE_URL_PATTERN = /^https:\/\/npb\.jp\/scores\/(\d{4})\/(\d{4})\/([a-z]{1,2})-([a-z]{1,2})-(\d{2})\/$/

@@ -1,6 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { NPB_TEAM_MAP, NPB_STATS_CODE_MAP, parseNpbRosterHtml, fetchNpbRoster, parseNpbBattingHtml, parseNpbPitchingHtml, fetchNpbStats, parseScorePageLineup, parseNpbGameRosterHtml } from '../npbRoster'
+import {
+  NPB_CODE_TO_TEAM_MAP,
+  NPB_TEAM_MAP,
+  NPB_STATS_CODE_MAP,
+  detectNpbAllStarType,
+  parseNpbRosterHtml,
+  parseNpbEventRosterHtml,
+  fetchNpbRoster,
+  parseNpbBattingHtml,
+  parseNpbPitchingHtml,
+  fetchNpbStats,
+  parseScorePageLineup,
+  parseNpbGameRosterHtml,
+} from '../npbRoster'
 import type { RosterPlayer } from '../../types'
+import freshAllStarScoreHtml from '../../../docs/copilot/オールスターゲーム.html?raw'
+import allStarRosterHtml from '../../../docs/copilot/オールスターゲームroster.html?raw'
+import freshAllStarRosterHtml from '../../../docs/copilot/出場者 _ ナミックス フレッシュオールスターゲーム2026 _ NPB.jp 日本野球機構_roster.html?raw'
 
 // テスト用のミニマルなNPBページHTML
 function makeHtml(teamHeading: string, rows: [string, string, string][]): string {
@@ -20,16 +36,16 @@ describe('NPB_TEAM_MAP', () => {
     const presets = [
       '広島', '巨人', '阪神', '中日', 'DeNA', 'ヤクルト',
       'ソフトバンク', 'オリックス', 'ロッテ', '楽天', '日本ハム', '西武',
-      'セントラル', 'パシフィック',
+      'Central', 'Pacific',
     ]
     for (const name of presets) {
       expect(Object.prototype.hasOwnProperty.call(NPB_TEAM_MAP, name)).toBe(true)
     }
   })
 
-  it('セントラル・パシフィックは null', () => {
-    expect(NPB_TEAM_MAP['セントラル']).toBeNull()
-    expect(NPB_TEAM_MAP['パシフィック']).toBeNull()
+  it('Central・Pacificはイベント名簿の見出しにマップされる', () => {
+    expect(NPB_TEAM_MAP.Central).toBe('セントラル・リーグ')
+    expect(NPB_TEAM_MAP.Pacific).toBe('パシフィック・リーグ')
   })
 
   it('巨人は読売ジャイアンツにマップされる', () => {
@@ -116,6 +132,104 @@ describe('parseNpbRosterHtml', () => {
   })
 })
 
+describe('オールスターのチームコードと試合種別', () => {
+  it('cl と pl を既存のリーグプリセットにマップする', () => {
+    expect(NPB_CODE_TO_TEAM_MAP.cl).toBe('Central')
+    expect(NPB_CODE_TO_TEAM_MAP.pl).toBe('Pacific')
+  })
+
+  it('試合見出しからフレッシュオールスターを判別する', () => {
+    const html = `
+      <nav><a href="/freshas/">フレッシュオールスター・ゲーム</a></nav>
+      <main><h3>【フレッシュオールスターゲーム】 セントラル・リーグ vs パシフィック・リーグ</h3></main>
+    `
+    expect(detectNpbAllStarType(html)).toBe('freshas')
+  })
+
+  it('共通ナビにフレッシュへのリンクがあっても通常オールスターと判別する', () => {
+    const html = `
+      <nav><a href="/freshas/">フレッシュオールスター・ゲーム</a></nav>
+      <main><h3>【マイナビオールスターゲーム】 セントラル・リーグ vs パシフィック・リーグ</h3></main>
+    `
+    expect(detectNpbAllStarType(html)).toBe('allstar')
+  })
+
+  it('オールスター以外の試合は null を返す', () => {
+    const html = '<main><h3>【JERA セ・リーグ公式戦】 読売ジャイアンツ vs 広島東洋カープ</h3></main>'
+    expect(detectNpbAllStarType(html)).toBeNull()
+  })
+})
+
+describe('parseNpbEventRosterHtml', () => {
+  const html = `
+    <div class="player_wrap">
+      <div class="half_left">
+        <h5><span>セントラル・リーグ選抜</span></h5>
+        <table>
+          <tr><th class="position">監督</th></tr>
+          <tr><td class="name">監督 太郎</td><td class="num">74</td></tr>
+          <tr><th class="position">先発投手</th></tr>
+          <tr><td class="name">投手 一郎</td><td class="num">019</td></tr>
+          <tr class="absence"><td class="name">辞退 投手</td><td class="num">99</td></tr>
+          <tr><th class="position">捕手</th></tr>
+          <tr><td class="name">捕手 二郎</td><td class="number">27</td></tr>
+          <tr><th class="position">内野手</th></tr>
+          <tr><td class="name">内野 三郎</td><td class="number">3</td></tr>
+          <tr><th class="position">外野手</th></tr>
+          <tr><td class="name">外野 四郎</td><td class="number">8</td></tr>
+        </table>
+      </div>
+      <div class="half_right">
+        <h5><span>パシフィック・リーグ</span></h5>
+        <table>
+          <tr><th class="position">投手</th></tr>
+          <tr><td class="name">パ 投手</td><td class="number">11</td></tr>
+        </table>
+      </div>
+    </div>
+  `
+
+  it('通常・フレッシュ両方の name と number/num 列から選手を抽出する', () => {
+    const result = parseNpbEventRosterHtml(html, 'セントラル・リーグ')
+    expect(result).toEqual([
+      { positionCategory: '投手', number: '019', name: '投手 一郎' },
+      { positionCategory: '捕手', number: '27', name: '捕手 二郎' },
+      { positionCategory: '内野手', number: '3', name: '内野 三郎' },
+      { positionCategory: '外野手', number: '8', name: '外野 四郎' },
+    ])
+  })
+
+  it('指定したリーグのセクションだけを抽出する', () => {
+    expect(parseNpbEventRosterHtml(html, 'パシフィック・リーグ')).toEqual([
+      { positionCategory: '投手', number: '11', name: 'パ 投手' },
+    ])
+  })
+})
+
+describe('提供された2026年オールスターHTML', () => {
+  it('フレッシュオールスターのスコアページを判別できる', () => {
+    expect(detectNpbAllStarType(freshAllStarScoreHtml)).toBe('freshas')
+  })
+
+  it('通常オールスター出場者ページから両リーグの選手を抽出できる', () => {
+    const central = parseNpbEventRosterHtml(allStarRosterHtml, 'セントラル・リーグ')
+    const pacific = parseNpbEventRosterHtml(allStarRosterHtml, 'パシフィック・リーグ')
+
+    expect(central.length).toBeGreaterThan(10)
+    expect(pacific.length).toBeGreaterThan(10)
+    expect(central).toContainEqual(expect.objectContaining({ number: '26', name: '山野 太一' }))
+  })
+
+  it('フレッシュ出場者ページの num 列から両リーグの選手を抽出できる', () => {
+    const central = parseNpbEventRosterHtml(freshAllStarRosterHtml, 'セントラル・リーグ')
+    const pacific = parseNpbEventRosterHtml(freshAllStarRosterHtml, 'パシフィック・リーグ')
+
+    expect(central.length).toBeGreaterThan(10)
+    expect(pacific.length).toBeGreaterThan(10)
+    expect(central).toContainEqual(expect.objectContaining({ number: '019', name: '園田 純規' }))
+  })
+})
+
 // fetchNpbRoster のテスト
 describe('fetchNpbRoster', () => {
   beforeEach(() => {
@@ -126,15 +240,61 @@ describe('fetchNpbRoster', () => {
   })
 
   it('セントラルはfetchせず空配列を返す', async () => {
-    const result = await fetchNpbRoster('セントラル')
+    const result = await fetchNpbRoster('Central')
     expect(result).toEqual([])
     expect(fetch).not.toHaveBeenCalled()
   })
 
   it('パシフィックはfetchせず空配列を返す', async () => {
-    const result = await fetchNpbRoster('パシフィック')
+    const result = await fetchNpbRoster('Pacific')
     expect(result).toEqual([])
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('フレッシュオールスターはスコアページを判別して freshas の名簿を取得する', async () => {
+    const scoreHtml = '<h3>【フレッシュオールスターゲーム】 セントラル・リーグ vs パシフィック・リーグ</h3>'
+    const rosterHtml = `
+      <div class="half_left">
+        <h5>セントラル・リーグ選抜</h5>
+        <table>
+          <tr><th class="position">投手</th></tr>
+          <tr><td class="name">園田 純規</td><td class="num">019</td></tr>
+        </table>
+      </div>
+    `
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => scoreHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response)
+
+    const result = await fetchNpbRoster('Central', 'https://npb.jp/scores/2026/0727/cl-pl-01/')
+
+    expect(result).toEqual([
+      { positionCategory: '投手', number: '019', name: '園田 純規' },
+    ])
+    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe('/api/npb-event/freshas/2026/roster.html')
+  })
+
+  it('通常オールスターは allstar の名簿を取得する', async () => {
+    const scoreHtml = '<h3>【マイナビオールスターゲーム】 セントラル・リーグ vs パシフィック・リーグ</h3>'
+    const rosterHtml = `
+      <div class="half_right">
+        <h5>パシフィック・リーグ</h5>
+        <table>
+          <tr><th class="position">外野手</th></tr>
+          <tr><td class="name">周東 佑京</td><td class="number">23</td></tr>
+        </table>
+      </div>
+    `
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => scoreHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response)
+
+    const result = await fetchNpbRoster('Pacific', 'https://npb.jp/scores/2026/0729/cl-pl-01/')
+
+    expect(result).toEqual([
+      { positionCategory: '外野手', number: '23', name: '周東 佑京' },
+    ])
+    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe('/api/npb-event/allstar/2026/roster.html')
   })
 
   it('未知のプリセット名はfetchせず空配列を返す', async () => {

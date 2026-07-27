@@ -16,8 +16,8 @@ const NPB_PRESETS = [
   { name: '楽天', color: '#870010' },
   { name: '日本ハム', color: '#01609A' },
   { name: '西武', color: '#336487' },
-  { name: 'セントラル', color: '#0F8F2C' },
-  { name: 'パシフィック', color: '#61AFE0' },
+  { name: 'Central', color: '#0F8F2C' },
+  { name: 'Pacific', color: '#61AFE0' },
 ] as const
 
 export default function GameControl() {
@@ -81,9 +81,9 @@ export default function GameControl() {
       setTeamName('home', p.name, p.name); setTeamColor('home', p.color)
     }
 
-    // セントラル・パシフィック等非対応チームはフェッチしない
+    // 未知のプリセットはフェッチしない
     const keyword = NPB_TEAM_MAP[p.name]
-    if (keyword === null || keyword === undefined) return
+    if (keyword === undefined) return
     if (!autoFetchRoster) return
 
     setRosterError(null)

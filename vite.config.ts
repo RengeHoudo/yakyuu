@@ -20,6 +20,11 @@ export default defineConfig({
           return path.replace('/api/npb-scores/', '/scores/')
         },
       },
+      '/api/npb-event/': {
+        target: 'https://npb.jp',
+        changeOrigin: true,
+        rewrite: (path) => path.replace('/api/npb-event/', '/'),
+      },
       '/api/npb-stats/': {
         target: 'https://npb.jp',
         changeOrigin: true,

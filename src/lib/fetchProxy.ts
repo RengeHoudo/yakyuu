@@ -60,6 +60,18 @@ export function fetchNpbGameRosterPage(scoreUrl: string): Promise<Response> {
   return fetch(devPath, NO_CACHE)
 }
 
+/** オールスター／フレッシュオールスターの出場者ページを取得する */
+export function fetchNpbEventRosterPage(
+  eventType: 'allstar' | 'freshas',
+  year: string,
+): Promise<Response> {
+  const rosterUrl = `https://npb.jp/${eventType}/${year}/roster.html`
+  if (isProduction()) {
+    return fetch(buildCorsProxyUrl(rosterUrl), NO_CACHE)
+  }
+  return fetch(`/api/npb-event/${eventType}/${year}/roster.html`, NO_CACHE)
+}
+
 /**
  * NPBボックススコアページ（box.html）を取得する。
  * scoreUrl には末尾スラッシュあり・なし両方対応。
