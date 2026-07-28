@@ -12,11 +12,13 @@ import {
   fetchNpbStats,
   parseScorePageLineup,
   parseNpbGameRosterHtml,
+  parseNpbEventRosterWithGameRosterHtml,
 } from '../npbRoster'
 import type { RosterPlayer } from '../../types'
 import freshAllStarScoreHtml from '../../../docs/copilot/オールスターゲーム.html?raw'
 import allStarRosterHtml from '../../../docs/copilot/オールスターゲームroster.html?raw'
 import freshAllStarRosterHtml from '../../../docs/copilot/出場者 _ ナミックス フレッシュオールスターゲーム2026 _ NPB.jp 日本野球機構_roster.html?raw'
+import allStarGameRosterHtml from '../../../docs/copilot/ベンチ試合速報 _ NPB.jp 日本野球機構.html?raw'
 
 // テスト用のミニマルなNPBページHTML
 function makeHtml(teamHeading: string, rows: [string, string, string][]): string {
@@ -218,6 +220,9 @@ describe('提供された2026年オールスターHTML', () => {
     expect(central.length).toBeGreaterThan(10)
     expect(pacific.length).toBeGreaterThan(10)
     expect(central).toContainEqual(expect.objectContaining({ number: '26', name: '山野 太一' }))
+    expect(pacific).toContainEqual(expect.objectContaining({ number: '24', name: '栗原 陵矢' }))
+    expect(pacific).toContainEqual(expect.objectContaining({ number: '43', name: '水野 達稀' }))
+    expect(pacific).toContainEqual(expect.objectContaining({ number: '99', name: 'レイエス' }))
   })
 
   it('フレッシュ出場者ページの num 列から両リーグの選手を抽出できる', () => {
@@ -227,6 +232,53 @@ describe('提供された2026年オールスターHTML', () => {
     expect(central.length).toBeGreaterThan(10)
     expect(pacific.length).toBeGreaterThan(10)
     expect(central).toContainEqual(expect.objectContaining({ number: '019', name: '園田 純規' }))
+  })
+
+  it('出場者ページのフルネームを維持し、ベンチページから投打の左右を反映する', () => {
+    const central = parseNpbEventRosterWithGameRosterHtml(
+      allStarRosterHtml,
+      allStarGameRosterHtml,
+      'セントラル・リーグ',
+    )
+    const pacific = parseNpbEventRosterWithGameRosterHtml(
+      allStarRosterHtml,
+      allStarGameRosterHtml,
+      'パシフィック・リーグ',
+    )
+
+    expect(central).toContainEqual(expect.objectContaining({
+      number: '26',
+      name: '山野 太一',
+      throwHand: 'L',
+      batHand: 'L',
+    }))
+    expect(central).toContainEqual(expect.objectContaining({
+      number: '11',
+      name: 'キハダ',
+      throwHand: 'L',
+      batHand: 'L',
+    }))
+    expect(central).not.toContainEqual(expect.objectContaining({
+      name: 'Ｊ．キハダ',
+    }))
+    expect(pacific).toContainEqual(expect.objectContaining({
+      number: '17',
+      name: '伊藤 大海',
+      throwHand: 'R',
+      batHand: 'L',
+    }))
+    expect(pacific).toContainEqual(expect.objectContaining({
+      number: '24',
+      name: '栗原 陵矢',
+      throwHand: 'R',
+      batHand: 'L',
+    }))
+    expect(pacific).toContainEqual(expect.objectContaining({
+      number: '43',
+      name: '水野 達稀',
+      throwHand: 'R',
+      batHand: 'L',
+    }))
   })
 })
 
@@ -295,6 +347,57 @@ describe('fetchNpbRoster', () => {
       { positionCategory: '外野手', number: '23', name: '周東 佑京' },
     ])
     expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe('/api/npb-event/allstar/2026/roster.html')
+  })
+
+  it('通常オールスターはベンチページから左右を取得し、出場者ページのフルネームへマージする', async () => {
+    const scoreHtml = '<h3>【マイナビオールスターゲーム】 セントラル・リーグ vs パシフィック・リーグ</h3>'
+    const rosterHtml = `
+      <div class="half_right">
+        <h5>セントラル・リーグ</h5>
+        <table>
+          <tr><th class="position">投手</th></tr>
+          <tr>
+            <td class="name"><a href="https://npb.jp/bis/players/63365153.html">山野 太一</a></td>
+            <td class="number">26</td>
+          </tr>
+        </table>
+      </div>
+    `
+    const gameRosterHtml = `
+      <div class="half_right">
+        <div class="roster_section">
+          <h5>セントラル・リーグ</h5>
+          <table>
+            <tr><th colspan="3">投手</th></tr>
+            <tr>
+              <td class="num">26</td>
+              <td><a href="https://npb.jp/bis/players/63365153.html">山野</a></td>
+              <td class="w4">左投左打</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true, text: async () => scoreHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => rosterHtml } as Response)
+      .mockResolvedValueOnce({ ok: true, text: async () => gameRosterHtml } as Response)
+
+    const result = await fetchNpbRoster(
+      'Central',
+      'https://npb.jp/scores/2026/0728/cl-pl-01/',
+    )
+
+    expect(result).toEqual([{
+      positionCategory: '投手',
+      number: '26',
+      name: '山野 太一',
+      throwHand: 'L',
+      batHand: 'L',
+    }])
+    expect(vi.mocked(fetch).mock.calls[2]?.[0]).toBe(
+      '/api/npb-scores/2026/0728/cl-pl-01/roster.html',
+    )
   })
 
   it('未知のプリセット名はfetchせず空配列を返す', async () => {

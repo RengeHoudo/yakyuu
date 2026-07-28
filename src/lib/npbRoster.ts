@@ -459,17 +459,47 @@ export function detectNpbAllStarType(html: string): NpbAllStarType | null {
 
 function eventPositionCategory(position: string): PositionCategory | null {
   if (position.includes('投手')) return '投手'
-  if (position === '捕手' || position === '内野手' || position === '外野手') {
-    return position
+  if (position === '捕手') return '捕手'
+  if (['一塁手', '二塁手', '三塁手', '遊撃手', '内野手', 'DH'].includes(position)) {
+    return '内野手'
   }
+  if (position === '外野手') return '外野手'
   return null
 }
 
-/**
- * オールスター／フレッシュオールスター出場者ページから指定リーグの選手を抽出する。
- * 通常版の背番号列は .number、フレッシュ版は .num なので両方に対応する。
- */
-export function parseNpbEventRosterHtml(html: string, teamNameKeyword: string): RosterPlayer[] {
+interface NpbEventRosterEntry extends RosterPlayer {
+  playerId?: string
+}
+
+interface NpbGameRosterEntry {
+  number: string
+  displayName: string
+  positionCategory: PositionCategory
+  playerId?: string
+  throwHand?: 'L' | 'R'
+  batHand?: 'L' | 'R' | 'S'
+}
+
+/** NPB選手詳細ページのURLから選手IDを抽出する。 */
+function playerIdFromRow(row: Element): string | undefined {
+  const href = row.querySelector<HTMLAnchorElement>('a[href*="/bis/players/"]')?.href ?? ''
+  return href.match(/\/bis\/players\/([^/]+)\.html/)?.[1]
+}
+
+function rosterPlayerFromEventEntry(entry: NpbEventRosterEntry): RosterPlayer {
+  return {
+    positionCategory: entry.positionCategory,
+    number: entry.number,
+    name: entry.name,
+    ...(entry.throwHand ? { throwHand: entry.throwHand } : {}),
+    ...(entry.batHand ? { batHand: entry.batHand } : {}),
+  }
+}
+
+function parseNpbEventRosterEntries(
+  html: string,
+  teamNameKeyword: string,
+): NpbEventRosterEntry[] {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
   const teamHeading = Array.from(doc.querySelectorAll('h5'))
@@ -481,7 +511,7 @@ export function parseNpbEventRosterHtml(html: string, teamNameKeyword: string): 
   const table = section?.querySelector('table')
   if (!table) return []
 
-  const players: RosterPlayer[] = []
+  const players: NpbEventRosterEntry[] = []
   let positionCategory: PositionCategory | null = null
 
   for (const row of table.querySelectorAll('tr')) {
@@ -500,10 +530,99 @@ export function parseNpbEventRosterHtml(html: string, teamNameKeyword: string): 
       positionCategory,
       number,
       name: normalizePlayerName(name),
+      playerId: playerIdFromRow(row),
     })
   }
 
   return players
+}
+
+/**
+ * オールスター／フレッシュオールスター出場者ページから指定リーグの選手を抽出する。
+ * 通常版の背番号列は .number、フレッシュ版は .num なので両方に対応する。
+ */
+export function parseNpbEventRosterHtml(html: string, teamNameKeyword: string): RosterPlayer[] {
+  return parseNpbEventRosterEntries(html, teamNameKeyword).map(rosterPlayerFromEventEntry)
+}
+
+function parseNpbGameRosterEntries(
+  html: string,
+  teamNameKeyword: string,
+): NpbGameRosterEntry[] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const teamHeading = Array.from(doc.querySelectorAll('h5'))
+    .find((heading) => heading.textContent?.trim().includes(teamNameKeyword))
+  if (!teamHeading) return []
+
+  const section = teamHeading.closest('.roster_section') ?? teamHeading.closest('div')
+  const table = section?.querySelector('table')
+  if (!table) return []
+
+  const players: NpbGameRosterEntry[] = []
+  let positionCategory: PositionCategory | null = null
+
+  for (const row of table.querySelectorAll('tr')) {
+    const positionHeading = row.querySelector('th')
+    if (positionHeading) {
+      positionCategory = eventPositionCategory(positionHeading.textContent?.trim() ?? '')
+      continue
+    }
+    if (!positionCategory) continue
+
+    const number = row.querySelector('td.num')?.textContent?.trim() ?? ''
+    const displayName = row.querySelector('a')?.textContent?.trim() ?? ''
+    const handedness = row.querySelector('td.w4')?.textContent?.replace(/\s+/g, '') ?? ''
+    const handsMatch = handedness.match(/([右左])投([右左両])打/)
+    if (!number || !displayName) continue
+
+    players.push({
+      positionCategory,
+      number,
+      displayName: normalizePlayerName(displayName),
+      playerId: playerIdFromRow(row),
+      ...(handsMatch ? {
+        throwHand: handsMatch[1] === '左' ? 'L' : 'R',
+        batHand: handsMatch[2] === '左' ? 'L' : handsMatch[2] === '両' ? 'S' : 'R',
+      } as const : {}),
+    })
+  }
+
+  return players
+}
+
+/**
+ * イベント出場者ページのフルネームへ、試合ベンチページの投打左右をマージする。
+ * 混成チームでは背番号が重複するため、NPB選手IDを優先して照合する。
+ */
+export function parseNpbEventRosterWithGameRosterHtml(
+  eventRosterHtml: string,
+  gameRosterHtml: string,
+  teamNameKeyword: string,
+): RosterPlayer[] {
+  const eventPlayers = parseNpbEventRosterEntries(eventRosterHtml, teamNameKeyword)
+  const gamePlayers = parseNpbGameRosterEntries(gameRosterHtml, teamNameKeyword)
+  const gamePlayersById = new Map(
+    gamePlayers
+      .filter((player): player is NpbGameRosterEntry & { playerId: string } => Boolean(player.playerId))
+      .map((player) => [player.playerId, player]),
+  )
+
+  return eventPlayers.map((eventPlayer) => {
+    const gamePlayer = eventPlayer.playerId
+      ? gamePlayersById.get(eventPlayer.playerId)
+      : gamePlayers.find((candidate) =>
+          candidate.number === eventPlayer.number
+          && matchAbbreviatedName(candidate.displayName, [eventPlayer]) === eventPlayer
+        )
+
+    return rosterPlayerFromEventEntry({
+      ...eventPlayer,
+      positionCategory: gamePlayer?.positionCategory ?? eventPlayer.positionCategory,
+      throwHand: gamePlayer?.throwHand,
+      batHand: gamePlayer?.batHand,
+    })
+  })
 }
 
 /**
@@ -569,7 +688,23 @@ export async function fetchNpbRoster(presetName: string, scoreUrl?: string): Pro
     if (!eventRosterRes.ok) {
       throw new Error(`NPBオールスター名簿へのアクセスに失敗しました (HTTP ${eventRosterRes.status})`)
     }
-    return parseNpbEventRosterHtml(await eventRosterRes.text(), keyword)
+    const eventRosterHtml = await eventRosterRes.text()
+
+    // イベント名簿には投打の左右がないため、試合ベンチページから補完する。
+    // ベンチ取得に失敗しても、フルネームのイベント名簿は利用できる。
+    try {
+      const gameRosterRes = await fetchNpbGameRosterPage(scoreUrl)
+      if (gameRosterRes.ok) {
+        return parseNpbEventRosterWithGameRosterHtml(
+          eventRosterHtml,
+          await gameRosterRes.text(),
+          keyword,
+        )
+      }
+    } catch {
+      // ベンチページ取得失敗時はイベント名簿のみを返す
+    }
+    return parseNpbEventRosterHtml(eventRosterHtml, keyword)
   }
 
   // Vite dev proxy or CORS proxy in production

@@ -252,4 +252,27 @@ describe('applyScorePageLineup', () => {
       losses: '5',
     })
   })
+
+  it('アルファベット付き登録名はイニシャルを除いた名前を反映する', () => {
+    const roster: RosterPlayer[] = [{
+      positionCategory: '投手',
+      number: '11',
+      name: 'キハダ',
+      throwHand: 'L',
+      batHand: 'L',
+    }]
+
+    const result = applyScorePageLineup(
+      emptyLineup(),
+      [{ order: 10, position: '投', name: 'キハダ' }],
+      roster,
+    )
+
+    expect(result[9]).toMatchObject({
+      name: 'キハダ',
+      number: '11',
+      throwHand: 'L',
+      batHand: 'L',
+    })
+  })
 })
