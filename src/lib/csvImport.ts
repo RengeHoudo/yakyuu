@@ -4,6 +4,57 @@ const VALID_POSITIONS: Position[] = ['投', '捕', '一', '二', '三', '遊', '
 
 const VALID_CATEGORIES: PositionCategory[] = ['投手', '捕手', '内野手', '外野手']
 
+type ThrowHand = NonNullable<RosterPlayer['throwHand']>
+type BatHand = NonNullable<RosterPlayer['batHand']>
+
+function normalizeHandValue(value: string): string {
+  return value
+    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/\s+/g, '')
+    .toUpperCase()
+}
+
+function parseThrowHand(value: string): ThrowHand | undefined {
+  const normalized = normalizeHandValue(value)
+  if (['L', '左', '左投', '左投げ'].includes(normalized)) return 'L'
+  if (['R', '右', '右投', '右投げ'].includes(normalized)) return 'R'
+  return undefined
+}
+
+function parseBatHand(value: string): BatHand | undefined {
+  const normalized = normalizeHandValue(value)
+  if (['L', '左', '左打', '左打ち'].includes(normalized)) return 'L'
+  if (['R', '右', '右打', '右打ち'].includes(normalized)) return 'R'
+  if (['S', '両', '両打', '両打ち', '左右', 'SWITCH'].includes(normalized)) return 'S'
+  return undefined
+}
+
+function parseCombinedHands(value: string): { throwHand?: ThrowHand; batHand?: BatHand } {
+  const normalized = normalizeHandValue(value)
+  const match = normalized.match(/^([左右RL])(?:投(?:げ)?)?[\/・-]?([右左両RLS])(?:打(?:ち)?)?$/)
+  if (!match) return {}
+  return {
+    throwHand: parseThrowHand(match[1] ?? ''),
+    batHand: parseBatHand(match[2] ?? ''),
+  }
+}
+
+function inferBatHandFromName(name: string): BatHand | undefined {
+  const normalized = normalizeHandValue(name.trim())
+  if (normalized.startsWith('*')) return 'L'
+  if (normalized.startsWith('+')) return 'S'
+  return undefined
+}
+
+function normalizeHeader(header: string): string {
+  return header.replace(/^\uFEFF/, '').replace(/[\s_-]+/g, '').toLowerCase()
+}
+
+function findHeaderIndex(headers: string[], aliases: string[]): number {
+  const normalizedAliases = aliases.map(normalizeHeader)
+  return headers.findIndex((header) => normalizedAliases.includes(normalizeHeader(header)))
+}
+
 function parseWinsFromRecord(record: string): string | undefined {
   const m = record.match(/(\d+)勝/)
   return m ? m[1] : undefined
@@ -37,9 +88,16 @@ export function normalizePlayerName(name: string): string {
  * 全選手名簿 CSV テキストから RosterPlayer[] をパースする。
  *
  * 期待フォーマット（ヘッダー行あり）:
- *   守備位置,背番号,名前,打率,HR,打点,OPS
+ *   守備位置,背番号,名前,打率,HR,打点,OPS,投,打
+ *   外野手,55,秋山 翔吾,.278,4,28,.735,右,左
+ * 投手成績を含む場合:
+ *   守備位置,背番号,名前,登板,勝,敗,セーブ,ホールド,防御率,投,打
+ *   投手,18,森下 暢仁,22,10,4,0,0,2.45,右,右
  *
  * - 守備位置: 投手 | 捕手 | 内野手 | 外野手
+ * - 投: 右 | 左（R / L も可）
+ * - 打: 右 | 左 | 両（R / L / S も可）
+ * - 「投打」列に「右投左打」のようにまとめて指定することも可能
  * - ヘッダー行は自動スキップ（1列目が有効カテゴリでなければヘッダーと判定）
  */
 export function parseRosterCsv(text: string): RosterPlayer[] {
@@ -50,31 +108,68 @@ export function parseRosterCsv(text: string): RosterPlayer[] {
 
   if (lines.length === 0) throw new Error('CSVが空です')
 
-  const firstCol = lines[0]!.split(',')[0]!.trim()
-  const dataLines = VALID_CATEGORIES.includes(firstCol as PositionCategory) ? lines : lines.slice(1)
+  const firstRow = lines[0]!.split(',').map((c) => c.trim())
+  const firstCol = firstRow[0]!.replace(/^\uFEFF/, '')
+  const hasHeader = !VALID_CATEGORIES.includes(firstCol as PositionCategory)
+  const dataLines = hasHeader ? lines.slice(1) : lines
+  const headers = hasHeader ? firstRow : []
+  const throwHandIdx = findHeaderIndex(headers, ['投', '投げ', '投球', '投球腕', 'throwHand', 'throws'])
+  const batHandIdx = findHeaderIndex(headers, ['打', '打ち', '打席側', 'batHand', 'bats'])
+  const combinedHandsIdx = findHeaderIndex(headers, ['投打', '投打左右', '左右', 'handedness'])
+  const columnIndex = (aliases: string[], legacyIndex: number): number =>
+    hasHeader ? findHeaderIndex(headers, aliases) : legacyIndex
+  const battingAvgIdx = columnIndex(['打率'], 3)
+  const homeRunsIdx = columnIndex(['HR', '本塁打'], 4)
+  const rbiIdx = columnIndex(['打点', 'RBI'], 5)
+  const opsIdx = columnIndex(['OPS'], 6)
+  const appearancesIdx = columnIndex(['登板', '登板数'], 3)
+  const winsIdx = columnIndex(['勝', '勝利'], 4)
+  const lossesIdx = columnIndex(['敗', '敗戦'], 5)
+  const savesIdx = columnIndex(['セーブ', 'S'], 6)
+  const holdsIdx = columnIndex(['ホールド', 'H'], 7)
+  const eraIdx = columnIndex(['防御率', 'ERA'], 8)
 
   const players: RosterPlayer[] = []
   for (const line of dataLines) {
     const cols = line.split(',').map((c) => c.trim())
-    const posRaw = cols[0] ?? ''
+    const posRaw = (cols[0] ?? '').replace(/^\uFEFF/, '')
     const number = cols[1] ?? ''
     const rawName = cols[2] ?? ''
     if (!VALID_CATEGORIES.includes(posRaw as PositionCategory) || !rawName) continue
+
+    // ヘッダーなしの場合も、従来列の末尾に「投,打」を足した形式を受け付ける。
+    const legacyThrowHandIdx = posRaw === '投手' ? 9 : 7
+    const legacyBatHandIdx = posRaw === '投手' ? 10 : 8
+    const combinedHands = combinedHandsIdx >= 0
+      ? parseCombinedHands(cols[combinedHandsIdx] ?? '')
+      : {}
+    const throwHand = parseThrowHand(
+      cols[throwHandIdx >= 0 ? throwHandIdx : (!hasHeader ? legacyThrowHandIdx : -1)] ?? '',
+    ) ?? combinedHands.throwHand
+    const batHand = parseBatHand(
+      cols[batHandIdx >= 0 ? batHandIdx : (!hasHeader ? legacyBatHandIdx : -1)] ?? '',
+    ) ?? combinedHands.batHand ?? inferBatHandFromName(rawName)
+    const valueAt = (index: number): string | undefined =>
+      index >= 0 ? (cols[index] || undefined) : undefined
+    const pitcherStat = (index: number): string | undefined =>
+      posRaw === '投手' ? valueAt(index) : undefined
+
     players.push({
       positionCategory: posRaw as PositionCategory,
       number,
       name: normalizePlayerName(rawName),
-      battingAvg: cols[3] || undefined,
-      homeRuns: cols[4] || undefined,
-      rbi: cols[5] || undefined,
-      ops: cols[6] || undefined,
-      // 投手用追加列（守備位置が投手の場合は cols[3]〜[8] を投手用に使用）
-      appearances: posRaw === '投手' ? (cols[3] || undefined) : undefined,
-      wins: posRaw === '投手' ? (cols[4] || undefined) : undefined,
-      losses: posRaw === '投手' ? (cols[5] || undefined) : undefined,
-      saves: posRaw === '投手' ? (cols[6] || undefined) : undefined,
-      holds: posRaw === '投手' ? (cols[7] || undefined) : undefined,
-      era: posRaw === '投手' ? (cols[8] || undefined) : undefined,
+      battingAvg: valueAt(battingAvgIdx),
+      homeRuns: valueAt(homeRunsIdx),
+      rbi: valueAt(rbiIdx),
+      ops: valueAt(opsIdx),
+      appearances: pitcherStat(appearancesIdx),
+      wins: pitcherStat(winsIdx),
+      losses: pitcherStat(lossesIdx),
+      saves: pitcherStat(savesIdx),
+      holds: pitcherStat(holdsIdx),
+      era: pitcherStat(eraIdx),
+      throwHand,
+      batHand,
     })
   }
 

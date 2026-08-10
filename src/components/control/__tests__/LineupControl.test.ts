@@ -110,7 +110,7 @@ describe('rosterPitcherToLineupFields', () => {
       positionCategory: '投手', number: '18', name: '森下 暢仁',
       appearances: '22', wins: '10', losses: '5',
       battingAvg: '.167', homeRuns: '0', rbi: '2', ops: '.389',
-      atBats: '18', hits: '3', batHand: 'R',
+      atBats: '18', hits: '3', throwHand: 'R', batHand: 'S',
     }
     const fields = rosterPitcherToLineupFields(r)
     expect(fields.battingAvg).toBe('.167')
@@ -119,7 +119,9 @@ describe('rosterPitcherToLineupFields', () => {
     expect(fields.ops).toBe('.389')
     expect(fields.atBats).toBe('18')
     expect(fields.hits).toBe('3')
-    expect(fields.batHand).toBe('R')
+    expect(fields.throwHand).toBe('R')
+    expect(fields.batHand).toBe('S')
+    expect(fields.switchHitter).toBe(true)
   })
 
   it('打撃成績がない投手では battingAvg が undefined', () => {

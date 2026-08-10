@@ -277,6 +277,7 @@ export function rosterPitcherToLineupFields(r: RosterPlayer): Partial<LineupPlay
     sluggingPct: r.sluggingPct,
     onBasePct: r.onBasePct,
     batHand: r.batHand,
+    switchHitter: r.batHand === 'S',
   }
 }
 
@@ -306,6 +307,9 @@ function rosterBatterToLineupFields(r: RosterPlayer): Partial<LineupPlayer> {
     groundedIntoDoublePlays: r.groundedIntoDoublePlays,
     sluggingPct: r.sluggingPct,
     onBasePct: r.onBasePct,
+    batHand: r.batHand,
+    throwHand: r.throwHand,
+    switchHitter: r.batHand === 'S',
   }
 }
 
@@ -491,6 +495,7 @@ function BatterRow({
                 sluggingPct: r.sluggingPct,
                 onBasePct: r.onBasePct,
                 batHand: r.batHand,
+                throwHand: r.throwHand,
                 switchHitter: r.batHand === 'S',
               })
             }}
@@ -981,6 +986,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
         <button
           onClick={() => rosterFileRef.current?.click()}
           className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-xs font-bold"
+          title="投・打列に右／左／両（または R／L／S）を指定できます"
         >
           選手名簿CSV読込
           {roster.length > 0 && (

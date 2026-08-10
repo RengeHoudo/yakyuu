@@ -254,3 +254,71 @@ describe('parseRosterCsv \u2013 \u6295\u624b\u30ab\u30c6\u30b4\u30ea\u5217\u62e1
     expect(result[0]?.battingAvg).toBe('.278')
   })
 })
+
+// ─────────────────────────────────────────────
+// parseRosterCsv — 投打左右
+// ─────────────────────────────────────────────
+
+describe('parseRosterCsv 投打左右', () => {
+  it('「投」「打」列から右投げ・左打ちを読み取る', () => {
+    const csv = `守備位置,背番号,名前,打率,HR,打点,OPS,投,打
+外野手,55,秋山 翔吾,.278,4,28,.735,右,左`
+    const result = parseRosterCsv(csv)
+    expect(result[0]?.throwHand).toBe('R')
+    expect(result[0]?.batHand).toBe('L')
+  })
+
+  it('投手成績の後ろにある「投」「打」列を読み取る', () => {
+    const csv = `守備位置,背番号,名前,登板,勝,敗,セーブ,ホールド,防御率,投,打
+投手,18,森下 暢仁,22,10,4,0,0,2.45,右,右`
+    const result = parseRosterCsv(csv)
+    expect(result[0]).toMatchObject({ throwHand: 'R', batHand: 'R' })
+  })
+
+  it('従来の名簿ヘッダー末尾に追加した投打列を投手成績として扱わない', () => {
+    const csv = `守備位置,背番号,名前,打率,HR,打点,OPS,投,打
+投手,21,左投手,,,,,左,左`
+    const result = parseRosterCsv(csv)
+    expect(result[0]).toMatchObject({ throwHand: 'L', batHand: 'L' })
+    expect(result[0]?.holds).toBeUndefined()
+    expect(result[0]?.era).toBeUndefined()
+  })
+
+  it('R / L / S 表記と列順の入れ替えに対応する', () => {
+    const csv = `守備位置,背番号,名前,打,投,打率,HR,打点,OPS
+内野手,0,スイッチ 選手,S,L,.250,1,10,.650`
+    const result = parseRosterCsv(csv)
+    expect(result[0]).toMatchObject({
+      throwHand: 'L',
+      batHand: 'S',
+      battingAvg: '.250',
+      homeRuns: '1',
+      rbi: '10',
+      ops: '.650',
+    })
+  })
+
+  it('「投打」列の右投左打を読み取る', () => {
+    const csv = `守備位置,背番号,名前,打率,HR,打点,OPS,投打
+外野手,7,テスト 選手,.300,2,15,.750,右投左打`
+    const result = parseRosterCsv(csv)
+    expect(result[0]).toMatchObject({ throwHand: 'R', batHand: 'L' })
+  })
+
+  it('名前先頭の NPB マークから左打ち・両打ちを引き継ぐ', () => {
+    const csv = `守備位置,背番号,名前
+外野手,55,*秋山 翔吾
+内野手,0,+スイッチ 選手`
+    const result = parseRosterCsv(csv)
+    expect(result[0]).toMatchObject({ name: '秋山 翔吾', batHand: 'L' })
+    expect(result[1]).toMatchObject({ name: 'スイッチ 選手', batHand: 'S' })
+  })
+
+  it('無効な投打表記は未設定として扱う', () => {
+    const csv = `守備位置,背番号,名前,打率,HR,打点,OPS,投,打
+捕手,31,坂倉 将吾,.288,16,62,.838,上,下`
+    const result = parseRosterCsv(csv)
+    expect(result[0]?.throwHand).toBeUndefined()
+    expect(result[0]?.batHand).toBeUndefined()
+  })
+})
