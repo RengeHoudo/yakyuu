@@ -670,6 +670,66 @@ describe('selectBatter', () => {
   })
 })
 
+describe('ラインナップ更新時の現在打者同期', () => {
+  it('現在打者の枠を手動変更すると batter も新しい選手へ切り替わる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 0,
+      currentHalf: 'top',
+      batter: { name: '秋山 翔吾', number: '55', stat: '.278', statLabel: '' },
+      statDisplaySettings: {
+        ...defaultStatDisplaySettings,
+        showHomeRuns: false,
+        showRbi: false,
+        showOps: false,
+      },
+    })
+
+    s().setLineupPlayer('away', 0, {
+      ...CARP_LINEUP[0]!,
+      name: '代打 太郎',
+      number: '99',
+      battingAvg: '.300',
+    })
+
+    expect(s().batter).toMatchObject({
+      name: '代打 太郎',
+      number: '99',
+      stat: '.300',
+    })
+  })
+
+  it('打順取得相当の一括更新で現在打者が変わると batter も切り替わる', () => {
+    useGameStore.setState({
+      awayLineup: [...CARP_LINEUP],
+      awayBatterIndex: 1,
+      currentHalf: 'top',
+      batter: { name: '野間 峻祥', number: '37', stat: '.265', statLabel: '' },
+      statDisplaySettings: {
+        ...defaultStatDisplaySettings,
+        showHomeRuns: false,
+        showRbi: false,
+        showOps: false,
+      },
+    })
+    const fetchedLineup = [...CARP_LINEUP]
+    fetchedLineup[1] = {
+      ...fetchedLineup[1]!,
+      name: '途中出場 次郎',
+      number: '98',
+      battingAvg: '.250',
+    }
+
+    s().setLineup('away', fetchedLineup)
+
+    expect(s().batter).toMatchObject({
+      name: '途中出場 次郎',
+      number: '98',
+      stat: '.250',
+    })
+  })
+})
+
 describe('nextBatter', () => {
   beforeEach(() => {
     useGameStore.setState({

@@ -60,6 +60,19 @@ function formatRate(val: number): string {
   return val.toFixed(3).replace(/^0/, '')
 }
 
+/** ラインナップ選手を、現在打者オーバーレイ用の情報へ変換する。 */
+function lineupPlayerToBatterInfo(
+  player: LineupPlayer,
+  settings: StatDisplaySettings,
+): PlayerInfo {
+  return {
+    name: player.name,
+    number: player.number,
+    stat: formatBatterStat(player, settings),
+    statLabel: '',
+  }
+}
+
 /** 成績から打率・長打率・出塁率・OPSを再計算する（後方互換用） */
 export function recalcBattingStats(player: LineupPlayer): Partial<LineupPlayer> {
   const atBats = numStat(player.atBats)
@@ -1215,6 +1228,7 @@ export const useGameStore = create<GameStore>()(
       setLineup: (team, lineup) =>
         set((s) => {
           const key = team === 'away' ? 'awayLineup' : 'homeLineup'
+          const idxKey = team === 'away' ? 'awayBatterIndex' : 'homeBatterIndex'
           const GAME_STAT_FIELDS = [
             'gameAtBats', 'gameWalks', 'gameHitByPitch', 'gameSacFlies',
             'gameSacBunts', 'gameSingles', 'gameDoubles', 'gameTriples', 'gameHomeRuns',
@@ -1234,7 +1248,15 @@ export const useGameStore = create<GameStore>()(
             Object.assign(newPlayer, computeLiveBattingStats(newPlayer))
             return newPlayer
           })
-          return { [key]: processedLineup }
+          const isAttacking = (team === 'away' && s.currentHalf === 'top')
+            || (team === 'home' && s.currentHalf === 'bottom')
+          const currentPlayer = processedLineup[s[idxKey]]
+          return {
+            [key]: processedLineup,
+            ...(isAttacking && currentPlayer
+              ? { batter: lineupPlayerToBatterInfo(currentPlayer, s.statDisplaySettings) }
+              : {}),
+          }
         }),
 
       setLineupPlayer: (team, index, player) =>
@@ -1266,7 +1288,18 @@ export const useGameStore = create<GameStore>()(
           Object.assign(newPlayer, computeLiveBattingStats(newPlayer))
           lineup[index] = newPlayer
 
-          return { [key]: lineup }
+          const idxKey = team === 'away' ? 'awayBatterIndex' : 'homeBatterIndex'
+          const isCurrentBatter = index < 9
+            && index === s[idxKey]
+            && ((team === 'away' && s.currentHalf === 'top')
+              || (team === 'home' && s.currentHalf === 'bottom'))
+
+          return {
+            [key]: lineup,
+            ...(isCurrentBatter
+              ? { batter: lineupPlayerToBatterInfo(newPlayer, s.statDisplaySettings) }
+              : {}),
+          }
         }),
 
       selectBatter: (team, index) =>
@@ -1309,12 +1342,7 @@ export const useGameStore = create<GameStore>()(
           const idxKey = team === 'away' ? 'awayBatterIndex' : 'homeBatterIndex'
           return {
             [idxKey]: index,
-            batter: {
-              name: player.name,
-              number: player.number,
-              stat: formatBatterStat(player, s.statDisplaySettings),
-              statLabel: '',
-            },
+            batter: lineupPlayerToBatterInfo(player, s.statDisplaySettings),
           }
         }),
 
@@ -1329,12 +1357,7 @@ export const useGameStore = create<GameStore>()(
           if (!player) return s
           return {
             [idxKey]: nextIdx,
-            batter: {
-              name: player.name,
-              number: player.number,
-              stat: formatBatterStat(player, s.statDisplaySettings),
-              statLabel: '',
-            },
+            batter: lineupPlayerToBatterInfo(player, s.statDisplaySettings),
             count: { ...s.count, balls: 0, strikes: 0 },
           }
         }),
@@ -1350,12 +1373,7 @@ export const useGameStore = create<GameStore>()(
           if (!player) return s
           return {
             [idxKey]: prevIdx,
-            batter: {
-              name: player.name,
-              number: player.number,
-              stat: formatBatterStat(player, s.statDisplaySettings),
-              statLabel: '',
-            },
+            batter: lineupPlayerToBatterInfo(player, s.statDisplaySettings),
           }
         }),
 
