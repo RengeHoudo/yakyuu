@@ -135,14 +135,14 @@ describe('BatterStatsOverlay', () => {
     await waitFor(() => expect(screen.getByText('.200 (20 - 4)')).toBeInTheDocument())
   })
 
-  it('2.2倍時に315x340になる基準サイズを持つ', async () => {
+  it('2.2倍時に250x340になる基準サイズを持つ', async () => {
     mockedFetch.mockResolvedValue(firstStats)
 
     render(<BatterStatsOverlay />)
     await screen.findByText('.333 (30 - 10)')
 
     const panel = screen.getByTestId('batter-stats-panel')
-    expect(Number.parseFloat(panel.style.width) * 2.2).toBeCloseTo(315, 5)
+    expect(Number.parseFloat(panel.style.width) * 2.2).toBeCloseTo(250, 5)
     expect(Number.parseFloat(panel.style.height) * 2.2).toBeCloseTo(340, 5)
   })
 })

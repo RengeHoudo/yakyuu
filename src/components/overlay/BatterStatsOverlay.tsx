@@ -8,7 +8,7 @@ import {
 import type { BatterAverageDetail, BatterSituationalStats } from '../../lib/npbScholar'
 import { useGameStore } from '../../store/useGameStore'
 
-const PANEL_WIDTH = 315 / 2.2
+const PANEL_WIDTH = 250 / 2.2
 const PANEL_HEIGHT = 340 / 2.2
 
 function formatDetail(detail: BatterAverageDetail | undefined): string {
