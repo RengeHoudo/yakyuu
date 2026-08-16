@@ -14,6 +14,8 @@ import Mascot from '../components/overlay/Mascot'
 import WaitingScreen from '../components/overlay/WaitingScreen'
 import FieldingDiagram from '../components/overlay/FieldingDiagram'
 import BoxScoreOverlay from '../components/overlay/BoxScoreOverlay'
+import BatterStatsOverlay from '../components/overlay/BatterStatsOverlay'
+import { DEFAULT_OVERLAY_POSITIONS } from '../types'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -46,8 +48,9 @@ function DraggableBox({
   scale?: number
 }) {
   // プリミティブ値でセレクトし、オブジェクト参照変更による不要な再レンダリングを防止
-  const storeX = useGameStore((s) => s.overlayPositions?.[id]?.x ?? 0)
-  const storeY = useGameStore((s) => s.overlayPositions?.[id]?.y ?? 0)
+  const defaultPosition = DEFAULT_OVERLAY_POSITIONS[id] ?? { x: 0, y: 0 }
+  const storeX = useGameStore((s) => s.overlayPositions?.[id]?.x ?? defaultPosition.x)
+  const storeY = useGameStore((s) => s.overlayPositions?.[id]?.y ?? defaultPosition.y)
   const setOverlayPosition = useGameStore((s) => s.setOverlayPosition)
 
   const [localPos, setLocalPos] = useState({ x: storeX, y: storeY })
@@ -216,6 +219,11 @@ export default function OverlayPage() {
       {/* ボックススコア（現在の打者の打席結果） */}
       <DraggableBox id="boxScore" scale={overlayScale}>
         <BoxScoreOverlay />
+      </DraggableBox>
+
+      {/* 現在打者のライブ打率・状況別打率 */}
+      <DraggableBox id="batterStats" scale={overlayScale}>
+        <BatterStatsOverlay />
       </DraggableBox>
 
       {/* エフェクト — 画面中央 */}

@@ -1650,6 +1650,11 @@ export const useGameStore = create<GameStore>()(
             ...current.statDisplaySettings,
             ...(p.statDisplaySettings ?? {}),
           },
+          // 新しいオーバーレイ項目の既定位置を、既存の保存データにも補完する
+          overlayPositions: {
+            ...current.overlayPositions,
+            ...(p.overlayPositions ?? {}),
+          },
         }
       },
     },

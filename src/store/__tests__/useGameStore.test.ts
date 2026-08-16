@@ -1782,6 +1782,7 @@ describe('resetOverlayPositions', () => {
     s().setOverlayPosition('scoreboard', { x: 999, y: 999 })
     s().resetOverlayPositions()
     expect(s().overlayPositions['scoreboard']).toEqual({ x: 24, y: 24 })
+    expect(s().overlayPositions['batterStats']).toEqual({ x: 24, y: 600 })
   })
 })
 

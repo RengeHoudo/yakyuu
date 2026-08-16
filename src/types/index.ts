@@ -722,6 +722,7 @@ export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
   fieldingDiagram: { x: 1680, y: 24 },
   batterAtBats: { x: 24, y: 200 },
   boxScore: { x: 24, y: 240 },
+  batterStats: { x: 24, y: 600 },
 }
 
 export const initialGameState: GameState = {
