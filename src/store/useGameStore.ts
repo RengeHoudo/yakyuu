@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { BatterGameStats, BoxScoreData, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
-import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats } from '../types'
+import type { BatterGameStats, BatterSituationalGameStats, BoxScoreData, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
+import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats, getBatterBaseState } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 
@@ -29,7 +29,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'overlayOpacity', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
   'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
-  'batterGameStats', 'boxScoreData',
+  'batterGameStats', 'batterSituationalGameStats', 'boxScoreData',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -206,7 +206,31 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
     ? { ...(s.batterGameStats ?? {}), [bKey]: newBGS }
     : (s.batterGameStats ?? {})
 
-  return { [key]: lineup, batterGameStats: newBatterGameStats }
+  // 打席結果を、走者が進塁する前の正確な塁状況へ記録する。
+  // 四球・死球・犠打・犠飛は atBats がないため状況別打率を変更しない。
+  let newSituationalGameStats = s.batterSituationalGameStats ?? {}
+  const atBatsIncrement = patch.atBats ?? 0
+  if (bKey && atBatsIncrement > 0) {
+    const baseState = getBatterBaseState(s.runners)
+    const playerSituations: BatterSituationalGameStats = newSituationalGameStats[bKey] ?? {}
+    const currentSituation = playerSituations[baseState] ?? { atBats: 0, hits: 0 }
+    newSituationalGameStats = {
+      ...newSituationalGameStats,
+      [bKey]: {
+        ...playerSituations,
+        [baseState]: {
+          atBats: currentSituation.atBats + atBatsIncrement,
+          hits: currentSituation.hits + (patch.hits ?? 0),
+        },
+      },
+    }
+  }
+
+  return {
+    [key]: lineup,
+    batterGameStats: newBatterGameStats,
+    batterSituationalGameStats: newSituationalGameStats,
+  }
 }
 
 /** 走者進塁を適用し、生還数を返す */

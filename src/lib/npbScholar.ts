@@ -1,19 +1,11 @@
-import { computeLiveBattingStats } from '../types'
-import type { LineupPlayer, Runners } from '../types'
+import { computeLiveBattingStats, getBatterBaseState } from '../types'
+import type { BatterBaseState, BatterSituationalGameStats, LineupPlayer, Runners } from '../types'
 
 const NPB_SCHOLAR_BASE_URL = 'https://npbscholar.com'
 const PLAYER_INDEX_URL = `${NPB_SCHOLAR_BASE_URL}/data/players_index.json`
 const NO_CACHE: RequestInit = { cache: 'no-store' }
 
-export type NpbScholarBaseState =
-  | 'Empty'
-  | '1st'
-  | '2nd'
-  | '3rd'
-  | '1st+2nd'
-  | '1st+3rd'
-  | '2nd+3rd'
-  | 'Loaded'
+export type NpbScholarBaseState = BatterBaseState
 
 export interface BatterAverageDetail {
   average: string
@@ -67,6 +59,15 @@ function formatAverage(hits: number, atBats: number): string {
   return value >= 1 ? value.toFixed(3) : value.toFixed(3).replace(/^0/, '')
 }
 
+function addGameLine(
+  season: BatterAverageDetail | undefined,
+  game: { atBats: number; hits: number } | undefined,
+): BatterAverageDetail {
+  const atBats = (season?.atBats ?? 0) + (game?.atBats ?? 0)
+  const hits = (season?.hits ?? 0) + (game?.hits ?? 0)
+  return { average: formatAverage(hits, atBats), atBats, hits }
+}
+
 function parseAverageRow(row: NpbScholarBaseStateRow | undefined): BatterAverageDetail {
   const atBats = toCount(row?.AB)
   const hits = toCount(row?.H)
@@ -114,14 +115,57 @@ export function parseNpbScholarBatterStats(payload: unknown): BatterSituationalS
 
 /** 現在の塁状況を NPB Scholar の Split 名と日本語表示名へ変換する。 */
 export function getBaseState(runners: Runners): { split: NpbScholarBaseState; label: string } {
-  if (runners.first && runners.second && runners.third) return { split: 'Loaded', label: '満塁' }
-  if (runners.first && runners.second) return { split: '1st+2nd', label: '1-2塁' }
-  if (runners.first && runners.third) return { split: '1st+3rd', label: '1-3塁' }
-  if (runners.second && runners.third) return { split: '2nd+3rd', label: '2-3塁' }
-  if (runners.first) return { split: '1st', label: '1塁' }
-  if (runners.second) return { split: '2nd', label: '2塁' }
-  if (runners.third) return { split: '3rd', label: '3塁' }
-  return { split: 'Empty', label: '走者なし' }
+  const split = getBatterBaseState(runners)
+  const labels: Record<NpbScholarBaseState, string> = {
+    Empty: '走者なし',
+    '1st': '1塁',
+    '2nd': '2塁',
+    '3rd': '3塁',
+    '1st+2nd': '1-2塁',
+    '1st+3rd': '1-3塁',
+    '2nd+3rd': '2-3塁',
+    Loaded: '満塁',
+  }
+  return { split, label: labels[split] }
+}
+
+/** NPB Scholarのシーズン値へ、この試合で記録した走者状況別の打数・安打数を加える。 */
+export function mergeBatterSituationalStats(
+  season: BatterSituationalStats,
+  game: BatterSituationalGameStats | undefined,
+): BatterSituationalStats {
+  if (!game) return season
+
+  const baseStates: NpbScholarBaseState[] = [
+    'Empty', '1st', '2nd', '3rd', '1st+2nd', '1st+3rd', '2nd+3rd', 'Loaded',
+  ]
+  const byBaseState: Partial<Record<NpbScholarBaseState, BatterAverageDetail>> = {}
+  for (const split of baseStates) {
+    const seasonLine = season.byBaseState[split]
+    const gameLine = game[split]
+    if (seasonLine || gameLine) byBaseState[split] = addGameLine(seasonLine, gameLine)
+  }
+
+  const nonRispGame = ['Empty', '1st'].reduce(
+    (total, split) => ({
+      atBats: total.atBats + (game[split as NpbScholarBaseState]?.atBats ?? 0),
+      hits: total.hits + (game[split as NpbScholarBaseState]?.hits ?? 0),
+    }),
+    { atBats: 0, hits: 0 },
+  )
+  const rispGame = ['2nd', '3rd', '1st+2nd', '1st+3rd', '2nd+3rd', 'Loaded'].reduce(
+    (total, split) => ({
+      atBats: total.atBats + (game[split as NpbScholarBaseState]?.atBats ?? 0),
+      hits: total.hits + (game[split as NpbScholarBaseState]?.hits ?? 0),
+    }),
+    { atBats: 0, hits: 0 },
+  )
+
+  return {
+    risp: addGameLine(season.risp, rispGame),
+    nonRisp: addGameLine(season.nonRisp, nonRispGame),
+    byBaseState,
+  }
 }
 
 /** 既存ロジックと同じライブ打率に、その計算元の打数・安打数を付ける。 */

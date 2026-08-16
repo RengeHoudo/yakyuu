@@ -78,6 +78,29 @@ export interface Runners {
   third: boolean
 }
 
+/** NPB Scholarの走者別区分と対応する、打席開始時の塁状況キー。 */
+export type BatterBaseState =
+  | 'Empty'
+  | '1st'
+  | '2nd'
+  | '3rd'
+  | '1st+2nd'
+  | '1st+3rd'
+  | '2nd+3rd'
+  | 'Loaded'
+
+/** 現在の走者を状況別成績のキーへ変換する。 */
+export function getBatterBaseState(runners: Runners): BatterBaseState {
+  if (runners.first && runners.second && runners.third) return 'Loaded'
+  if (runners.first && runners.second) return '1st+2nd'
+  if (runners.first && runners.third) return '1st+3rd'
+  if (runners.second && runners.third) return '2nd+3rd'
+  if (runners.first) return '1st'
+  if (runners.second) return '2nd'
+  if (runners.third) return '3rd'
+  return 'Empty'
+}
+
 /** 各塁に出塁している打順インデックス（0-8）。null = 誰もいない */
 export interface RunnerIndices {
   first: number | null
@@ -236,6 +259,15 @@ export const defaultBatterGameStats: BatterGameStats = {
   gameHomeRuns: 0,
 }
 
+/** 1つの走者状況における、その試合での打数・安打数。 */
+export interface BatterSituationGameLine {
+  atBats: number
+  hits: number
+}
+
+/** 1打者の走者状況別試合内成績。 */
+export type BatterSituationalGameStats = Partial<Record<BatterBaseState, BatterSituationGameLine>>
+
 /** 投手の試合中成績トラッキング用 */
 export interface PitcherGameStats {
   hitsAllowed: number
@@ -337,6 +369,8 @@ export interface GameState {
   pitcherHistory: PitcherAppearance[]
   /** 打者ごとの試合中成績。キー形式: "${team}-${number}" (例: "away-3") */
   batterGameStats: Record<string, BatterGameStats>
+  /** 打者ごとの走者状況別試合内打数・安打数。キー形式: "${team}-${number}" */
+  batterSituationalGameStats: Record<string, BatterSituationalGameStats>
   /** NPBボックススコアから取得した打席結果。3分ごとに自動更新 */
   boxScoreData: BoxScoreData | null
 }
@@ -767,6 +801,7 @@ export const initialGameState: GameState = {
   pitcherStats: {},
   pitcherGameStats: {},
   batterGameStats: {},
+  batterSituationalGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
   pitcherHistory: [],

@@ -99,6 +99,22 @@ describe('BatterStatsOverlay', () => {
     expect(screen.queryByText('得点圏打率')).not.toBeInTheDocument()
   })
 
+  it('その試合の走者別打数・安打数を得点圏と走者別の両方へ反映する', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+    useGameStore.setState({
+      batterSituationalGameStats: {
+        'away-51': {
+          '1st+3rd': { atBats: 3, hits: 2 },
+        },
+      },
+    })
+
+    render(<BatterStatsOverlay />)
+
+    expect(await screen.findByText('.364 (33 - 12)')).toBeInTheDocument()
+    expect(screen.getByTestId('base-state-average')).toHaveTextContent('.538 (13 - 7)')
+  })
+
   it('打者が変わると名前と打率を即時更新し、前打者の詳細を残さない', async () => {
     let resolveSecond!: (stats: BatterSituationalStats) => void
     mockedFetch

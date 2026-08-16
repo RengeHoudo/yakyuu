@@ -426,6 +426,76 @@ describe('batterGameStats – 選手IDに紐づく成績管理', () => {
 })
 
 // ─────────────────────────────────────────────
+// batterSituationalGameStats: 走者状況別の試合内打数・安打数
+// ─────────────────────────────────────────────
+
+describe('batterSituationalGameStats – 走者状況別の試合内成績', () => {
+  function setCurrentBatter(runners: { first: boolean; second: boolean; third: boolean }) {
+    useGameStore.setState({
+      currentHalf: 'top',
+      awayBatterIndex: 0,
+      batter: { name: BATTER.name, number: BATTER.number, stat: '', statLabel: '' },
+      runners,
+    })
+  }
+
+  it('1-3塁で単打を記録すると、打席前の1st+3rdへ打数1・安打1を加算する', () => {
+    setCurrentBatter({ first: true, second: false, third: true })
+
+    s().recordSingle()
+
+    expect(s().batterSituationalGameStats['away-3']?.['1st+3rd']).toEqual({ atBats: 1, hits: 1 })
+  })
+
+  it('2塁でゴロアウトを記録すると、2ndへ打数だけを加算する', () => {
+    setCurrentBatter({ first: false, second: true, third: false })
+
+    s().recordGroundout()
+
+    expect(s().batterSituationalGameStats['away-3']?.['2nd']).toEqual({ atBats: 1, hits: 0 })
+  })
+
+  it('同じ打者の同じ状況で単打とアウトを記録すると累積する', () => {
+    setCurrentBatter({ first: false, second: true, third: true })
+    s().recordSingle()
+    setCurrentBatter({ first: false, second: true, third: true })
+    s().recordFlyout()
+
+    expect(s().batterSituationalGameStats['away-3']?.['2nd+3rd']).toEqual({ atBats: 2, hits: 1 })
+  })
+
+  it('四球と犠打は打数にならないため状況別打率を変更しない', () => {
+    setCurrentBatter({ first: false, second: true, third: false })
+    s().recordWalk()
+    setCurrentBatter({ first: false, second: true, third: false })
+    s().recordSacrificeBunt()
+
+    expect(s().batterSituationalGameStats['away-3']).toBeUndefined()
+  })
+
+  it('Undoで直前の状況別成績も戻る', () => {
+    setCurrentBatter({ first: true, second: true, third: false })
+    clearUndoHistory()
+    s().recordDouble()
+    expect(s().batterSituationalGameStats['away-3']?.['1st+2nd']).toEqual({ atBats: 1, hits: 1 })
+
+    s().undo()
+
+    expect(s().batterSituationalGameStats['away-3']).toBeUndefined()
+  })
+
+  it('新しい試合を開始すると状況別成績をリセットする', () => {
+    setCurrentBatter({ first: false, second: false, third: false })
+    s().recordHomeRun()
+    expect(s().batterSituationalGameStats['away-3']?.Empty).toEqual({ atBats: 1, hits: 1 })
+
+    s().newGame()
+
+    expect(s().batterSituationalGameStats).toEqual({})
+  })
+})
+
+// ─────────────────────────────────────────────
 // 投手: setPitcherGameStats
 // ─────────────────────────────────────────────
 

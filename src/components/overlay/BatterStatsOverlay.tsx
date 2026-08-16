@@ -3,6 +3,7 @@ import {
   fetchNpbScholarBatterStats,
   getBaseState,
   getLiveBatterAverage,
+  mergeBatterSituationalStats,
 } from '../../lib/npbScholar'
 import type { BatterAverageDetail, BatterSituationalStats } from '../../lib/npbScholar'
 import { useGameStore } from '../../store/useGameStore'
@@ -31,6 +32,7 @@ export default function BatterStatsOverlay() {
   const awayTeamName = useGameStore((state) => state.awayTeam.name)
   const homeTeamName = useGameStore((state) => state.homeTeam.name)
   const runners = useGameStore((state) => state.runners)
+  const batterSituationalGameStats = useGameStore((state) => state.batterSituationalGameStats ?? {})
 
   const attackingLineup = currentHalf === 'top' ? awayLineup : homeLineup
   const batterIndex = currentHalf === 'top' ? awayBatterIndex : homeBatterIndex
@@ -40,6 +42,9 @@ export default function BatterStatsOverlay() {
     : attackingLineup.find((player) => player.name === batter.name)
   const playerName = batter.name || indexedPlayer?.name || ''
   const teamName = currentHalf === 'top' ? awayTeamName : homeTeamName
+  const teamKey = currentHalf === 'top' ? 'away' : 'home'
+  const playerKey = lineupPlayer?.number ? `${teamKey}-${lineupPlayer.number}` : null
+  const gameSituationalStats = playerKey ? batterSituationalGameStats[playerKey] : undefined
   const requestKey = `${playerName}|${teamName}`
 
   const [loaded, setLoaded] = useState<LoadedStats>({ key: '', status: 'loading', data: null })
@@ -58,7 +63,11 @@ export default function BatterStatsOverlay() {
     return () => { active = false }
   }, [playerName, requestKey, teamName])
 
-  const stats = loaded.key === requestKey ? loaded.data : null
+  const seasonStats = loaded.key === requestKey ? loaded.data : null
+  const stats = useMemo(
+    () => seasonStats ? mergeBatterSituationalStats(seasonStats, gameSituationalStats) : null,
+    [gameSituationalStats, seasonStats],
+  )
   const status = loaded.key === requestKey ? loaded.status : 'loading'
   const baseState = getBaseState(runners)
   const isScoringPosition = runners.second || runners.third

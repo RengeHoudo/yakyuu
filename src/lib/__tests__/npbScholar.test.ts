@@ -5,6 +5,7 @@ import {
   fetchNpbScholarBatterStats,
   getBaseState,
   getLiveBatterAverage,
+  mergeBatterSituationalStats,
   parseNpbScholarBatterStats,
 } from '../npbScholar'
 
@@ -70,6 +71,32 @@ describe('getLiveBatterAverage', () => {
     }
 
     expect(getLiveBatterAverage(player)).toEqual({ average: '.304', atBats: 102, hits: 31 })
+  })
+})
+
+describe('mergeBatterSituationalStats', () => {
+  it('得点圏と現在の走者別成績へ、その試合の打数・安打数を合算する', () => {
+    const season = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
+
+    const merged = mergeBatterSituationalStats(season, {
+      '1st+3rd': { atBats: 3, hits: 2 },
+    })
+
+    expect(merged.risp).toEqual({ average: '.326', atBats: 43, hits: 14 })
+    expect(merged.byBaseState['1st+3rd']).toEqual({ average: '.538', atBats: 13, hits: 7 })
+  })
+
+  it('走者なしと1塁の試合成績を非得点圏打率へ合算する', () => {
+    const season = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
+
+    const merged = mergeBatterSituationalStats(season, {
+      Empty: { atBats: 1, hits: 1 },
+      '1st': { atBats: 2, hits: 0 },
+    })
+
+    expect(merged.nonRisp).toEqual({ average: '.236', atBats: 123, hits: 29 })
+    expect(merged.byBaseState.Empty).toEqual({ average: '.208', atBats: 101, hits: 21 })
+    expect(merged.byBaseState['1st']).toEqual({ average: '.364', atBats: 22, hits: 8 })
   })
 })
 
