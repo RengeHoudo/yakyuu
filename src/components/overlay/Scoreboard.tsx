@@ -201,9 +201,9 @@ export default function Scoreboard() {
 
         {/* BSO */}
         <div className="flex items-center gap-2">
-          <BSODots label="B" count={count.balls} max={4} color="bg-green-500" />
-          <BSODots label="S" count={count.strikes} max={3} color="bg-yellow-400" />
-          <BSODots label="O" count={count.outs} max={3} color="bg-red-500" />
+          <BSODots label="B" count={count.balls} max={3} color="bg-green-500" />
+          <BSODots label="S" count={count.strikes} max={2} color="bg-yellow-400" />
+          <BSODots label="O" count={count.outs} max={2} color="bg-red-500" />
         </div>
 
         <div className="w-px h-4 bg-gray-600" />
@@ -212,9 +212,11 @@ export default function Scoreboard() {
         <MiniDiamond first={runners.first} second={runners.second} third={runners.third} />
 
         {/* 球数 */}
-        <div className="text-gray-400 text-[10px] ml-auto">
-          <span className="text-gray-500">P</span>{' '}
-          <span className="text-white font-bold text-xs">{pitchCount}</span>
+        <div
+          className="text-white text-[10px] ml-auto whitespace-nowrap"
+          aria-label={`投球数 : ${pitchCount} 球`}
+        >
+          投球数 : <span className="text-red-400 font-bold text-xs mx-1">{pitchCount}</span>球
         </div>
       </div>
     </div>
@@ -222,12 +224,19 @@ export default function Scoreboard() {
 }
 
 function BSODots({ label, count, max, color }: { label: string; count: number; max: number; color: string }) {
+  const countLabel = label === 'B'
+    ? 'ボールカウント'
+    : label === 'S'
+      ? 'ストライクカウント'
+      : 'アウトカウント'
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" aria-label={`${countLabel} ${count}`}>
       <span className="text-gray-500 text-[10px] font-bold w-2">{label}</span>
       {Array.from({ length: max }, (_, i) => (
         <div
           key={i}
+          data-count-dot
           className={`w-2.5 h-2.5 rounded-full ${
             i < count ? color : 'bg-gray-700'
           }`}

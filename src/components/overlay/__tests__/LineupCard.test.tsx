@@ -75,7 +75,7 @@ describe('LineupCard 投手欄の相手チーム名表示', () => {
     // 投手名が表示される
     expect(screen.getByText('投手太郎')).toBeInTheDocument()
     // 投球数が表示される
-    expect(screen.getByText('42球')).toBeInTheDocument()
+    expect(screen.getByText('42球')).toHaveClass('text-red-400', 'font-bold')
   })
 
   it('攻撃側=home の場合、投手欄にアウェーチームの shortName が表示される', () => {

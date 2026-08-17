@@ -141,7 +141,7 @@ function PitcherBar({ pitcher, pitchCount, teamName, teamColor, statDisplaySetti
             {pitcherStat}
           </span>
         )}
-        <span className="text-gray-400 text-[10px] ml-auto">{pitchCount}球</span>
+        <span className="text-red-400 text-[10px] font-bold ml-auto">{pitchCount}球</span>
       </div>
     </div>
   )

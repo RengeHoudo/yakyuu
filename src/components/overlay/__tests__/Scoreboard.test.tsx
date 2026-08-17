@@ -405,3 +405,33 @@ describe('Scoreboard - サヨナラ時の "Nx" 表記', () => {
     expect(screen.getByText('1x')).toBeInTheDocument()
   })
 })
+
+describe('Scoreboard - ボトムバー', () => {
+  it.each([
+    { label: 'ボールカウント', expectedDots: 3 },
+    { label: 'ストライクカウント', expectedDots: 2 },
+    { label: 'アウトカウント', expectedDots: 2 },
+  ])('$label は成立前の $expectedDots 個だけ表示する', ({ label, expectedDots }) => {
+    useGameStore.setState({
+      ...initialGameState,
+      count: { balls: 3, strikes: 2, outs: 2 },
+    })
+
+    render(<Scoreboard />)
+
+    const countDisplay = screen.getByLabelText(new RegExp(`^${label}`))
+    expect(countDisplay.querySelectorAll('[data-count-dot]')).toHaveLength(expectedDots)
+  })
+
+  it('投球数を単位付きで表示し、数字を赤系統で強調する', () => {
+    useGameStore.setState({
+      ...initialGameState,
+      pitchCount: 25,
+    })
+
+    render(<Scoreboard />)
+
+    expect(screen.getByLabelText('投球数 : 25 球')).toHaveClass('text-white')
+    expect(screen.getByText('25').className).toMatch(/\btext-red-/)
+  })
+})
