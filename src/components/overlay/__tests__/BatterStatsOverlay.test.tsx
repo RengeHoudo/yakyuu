@@ -158,7 +158,7 @@ describe('BatterStatsOverlay', () => {
     await waitFor(() => expect(screen.getByText('.200 (20 - 4)')).toBeInTheDocument())
   })
 
-  it('2.2倍時に250x360になる基準サイズを持つ', async () => {
+  it('2.2倍時に250x390になる基準サイズを持つ', async () => {
     mockedFetch.mockResolvedValue(firstStats)
 
     render(<BatterStatsOverlay />)
@@ -166,7 +166,7 @@ describe('BatterStatsOverlay', () => {
 
     const panel = screen.getByTestId('batter-stats-panel')
     expect(Number.parseFloat(panel.style.width) * 2.2).toBeCloseTo(250, 5)
-    expect(Number.parseFloat(panel.style.height) * 2.2).toBeCloseTo(360, 5)
+    expect(Number.parseFloat(panel.style.height) * 2.2).toBeCloseTo(390, 5)
   })
 
   it('通常打率を詳細打率より大きくし、詳細項目間に余白を持つ', async () => {
@@ -176,7 +176,7 @@ describe('BatterStatsOverlay', () => {
     await screen.findByText('.333 (30 - 10)')
 
     expect(screen.getByTestId('live-batter-average')).toHaveClass('text-[11px]', 'leading-tight')
-    expect(screen.getByTestId('situational-stats-list')).toHaveClass('space-y-[4px]')
+    expect(screen.getByTestId('situational-stats-list')).toHaveClass('space-y-[3px]')
   })
 
   it('打者名を小さくし、各成績ブロックに上下paddingを持つ', async () => {
@@ -189,7 +189,19 @@ describe('BatterStatsOverlay', () => {
     expect(screen.getByTestId('live-average-block')).toHaveClass('py-px')
     expect(screen.getAllByTestId('situational-stat-item')).toHaveLength(4)
     for (const item of screen.getAllByTestId('situational-stat-item')) {
-      expect(item).toHaveClass('py-px')
+      expect(item).toHaveClass('py-[2px]')
     }
+  })
+
+  it('得点圏以下のラベルと打率を拡大する', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+
+    render(<BatterStatsOverlay />)
+    await screen.findByText('.333 (30 - 10)')
+
+    expect(screen.getByText('得点圏打率')).toHaveClass('text-[8px]')
+    expect(screen.getByTestId('base-state-average')).toHaveClass('text-[10px]')
+    expect(screen.getByTestId('pitcher-hand-average')).toHaveClass('text-[10px]')
+    expect(screen.getByTestId('count-average')).toHaveClass('text-[10px]')
   })
 })
