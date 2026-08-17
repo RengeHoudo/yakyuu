@@ -141,6 +141,17 @@ export default function BatterStatsOverlay() {
             <div data-testid="situational-stats-list" className="space-y-[3px]">
               <div data-testid="situational-stat-item" className="py-[2.25px]">
                 <div className="text-[9px] leading-none text-gray-300 mb-px">
+                  {pitcherHand === 'R' ? '対右投手' : pitcherHand === 'L' ? '対左投手' : '投手左右不明'}
+                </div>
+                <div
+                  data-testid="pitcher-hand-average"
+                  className="text-[11px] leading-none font-bold text-green-200 tabular-nums"
+                >
+                  {formatDetail(pitcherHandDetail)}
+                </div>
+              </div>
+              <div data-testid="situational-stat-item" className="py-[2.25px]">
+                <div className="text-[9px] leading-none text-gray-300 mb-px">
                   {isScoringPosition ? '得点圏打率' : '非得点圏打率'}
                 </div>
                 <div className="text-[11px] leading-none font-bold tabular-nums">
@@ -156,17 +167,6 @@ export default function BatterStatsOverlay() {
                   className="text-[11px] leading-none font-bold text-cyan-200 tabular-nums"
                 >
                   {formatDetail(baseStateDetail)}
-                </div>
-              </div>
-              <div data-testid="situational-stat-item" className="py-[2.25px]">
-                <div className="text-[9px] leading-none text-gray-300 mb-px">
-                  {pitcherHand === 'R' ? '対右投手' : pitcherHand === 'L' ? '対左投手' : '投手左右不明'}
-                </div>
-                <div
-                  data-testid="pitcher-hand-average"
-                  className="text-[11px] leading-none font-bold text-green-200 tabular-nums"
-                >
-                  {formatDetail(pitcherHandDetail)}
                 </div>
               </div>
               <div data-testid="situational-stat-item" className="py-[2.25px]">

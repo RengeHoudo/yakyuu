@@ -204,4 +204,15 @@ describe('BatterStatsOverlay', () => {
     expect(screen.getByTestId('pitcher-hand-average')).toHaveClass('text-[11px]')
     expect(screen.getByTestId('count-average')).toHaveClass('text-[11px]')
   })
+
+  it('左右別、得点圏、走者別、カウント別の順で表示する', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+
+    render(<BatterStatsOverlay />)
+    await screen.findByText('.333 (30 - 10)')
+
+    const labels = Array.from(screen.getByTestId('situational-stats-list').children)
+      .map((item) => item.firstElementChild?.textContent)
+    expect(labels).toEqual(['対右投手', '得点圏打率', '1-3塁', 'カウント 2-1'])
+  })
 })
