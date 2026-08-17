@@ -44,6 +44,86 @@ const nineInnings = Array.from({ length: 9 }, (_, i) => ({
 }))
 
 describe('Scoreboard - 試合終了時のイニング表示 (x マーク)', () => {
+  it('9回表終了後、ホームがリードしていれば未実施の裏に "x" が表示される', () => {
+    const innings = [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        inning: i + 1,
+        top: 0,
+        bottom: i === 0 ? 1 : 0,
+      })),
+      { inning: 9, top: null, bottom: null },
+    ]
+    useGameStore.setState({
+      ...initialGameState,
+      isGameOver: false,
+      currentInning: 9,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings,
+      awayTotal: 0,
+      homeTotal: 1,
+    })
+
+    useGameStore.getState().addOut()
+    render(<Scoreboard />)
+
+    expect(useGameStore.getState().currentHalf).toBe('bottom')
+    expect(screen.getByText('x')).toBeInTheDocument()
+  })
+
+  it.each([
+    { label: '同点', awayTotal: 0, homeTotal: 0 },
+    { label: 'アウェイリード', awayTotal: 1, homeTotal: 0 },
+  ])('9回表終了後でも$labelなら "x" は表示されない', ({ awayTotal, homeTotal }) => {
+    const innings = [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        inning: i + 1,
+        top: i === 0 ? awayTotal : 0,
+        bottom: i === 0 ? homeTotal : 0,
+      })),
+      { inning: 9, top: null, bottom: null },
+    ]
+    useGameStore.setState({
+      ...initialGameState,
+      currentInning: 9,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings,
+      awayTotal,
+      homeTotal,
+    })
+
+    useGameStore.getState().addOut()
+    render(<Scoreboard />)
+
+    expect(screen.queryByText('x')).not.toBeInTheDocument()
+  })
+
+  it('8回表終了後はホームがリードしていても "x" は表示されない', () => {
+    const innings = [
+      ...Array.from({ length: 7 }, (_, i) => ({
+        inning: i + 1,
+        top: 0,
+        bottom: i === 0 ? 1 : 0,
+      })),
+      { inning: 8, top: null, bottom: null },
+    ]
+    useGameStore.setState({
+      ...initialGameState,
+      currentInning: 8,
+      currentHalf: 'top',
+      count: { balls: 0, strikes: 0, outs: 2 },
+      innings,
+      awayTotal: 0,
+      homeTotal: 1,
+    })
+
+    useGameStore.getState().addOut()
+    render(<Scoreboard />)
+
+    expect(screen.queryByText('x')).not.toBeInTheDocument()
+  })
+
   it('9回表で試合終了したとき、ホームチームの9回に "x" が表示される', () => {
     useGameStore.setState({
       ...initialGameState,
@@ -207,6 +287,48 @@ describe('Scoreboard - 試合終了時のイニング数制限', () => {
 })
 
 describe('Scoreboard - サヨナラ時の "Nx" 表記', () => {
+  it.each([9, 10])('%i回裏にホームが勝ち越した時点で、試合終了操作前でも "1x" が表示される', (inning) => {
+    const innings = [
+      ...Array.from({ length: inning - 1 }, (_, i) => ({ inning: i + 1, top: 0, bottom: 0 })),
+      { inning, top: 0, bottom: 1 },
+    ]
+    useGameStore.setState({
+      ...initialGameState,
+      isGameOver: false,
+      currentInning: inning,
+      currentHalf: 'bottom',
+      count: { balls: 0, strikes: 0, outs: 1 },
+      innings,
+      awayTotal: 0,
+      homeTotal: 1,
+    })
+
+    render(<Scoreboard />)
+
+    expect(screen.getByText('1x')).toBeInTheDocument()
+  })
+
+  it('9回裏に得点してもホームが勝ち越していなければ "x" サフィックスは付かない', () => {
+    const innings = [
+      ...Array.from({ length: 8 }, (_, i) => ({ inning: i + 1, top: 0, bottom: 0 })),
+      { inning: 9, top: 0, bottom: 1 },
+    ]
+    useGameStore.setState({
+      ...initialGameState,
+      isGameOver: true,
+      currentInning: 9,
+      currentHalf: 'bottom',
+      count: { balls: 0, strikes: 0, outs: 3 },
+      innings,
+      awayTotal: 2,
+      homeTotal: 1,
+    })
+
+    render(<Scoreboard />)
+
+    expect(screen.queryByText('1x')).not.toBeInTheDocument()
+  })
+
   it('9回裏サヨナラで試合終了(1点)したとき、ホームの9回に "1x" が表示される', () => {
     const innings = [
       ...Array.from({ length: 8 }, (_, i) => ({ inning: i + 1, top: 0, bottom: 0 })),

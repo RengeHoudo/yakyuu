@@ -36,13 +36,27 @@ export default function Scoreboard() {
     ? Math.max(9, shouldShowCurrentInning ? currentInning : currentInning - 1)
     : Math.max(9, innings.length)
 
-  // ホームチームに "x" を表示するイニング番号 (試合終了・表の場合のみ)
-  const showXAtInning =
-    isGameOver && currentHalf === 'top' && shouldShowCurrentInning ? currentInning : null
+  // 9回表終了時にホームがリードしていれば、裏の攻撃は行われない。
+  // advanceInning 後は currentHalf が bottom になるため、試合終了フラグだけに頼らず判定する。
+  const bottomWasSkipped =
+    currentInning === 9 &&
+    currentHalf === 'bottom' &&
+    homeTotal > awayTotal &&
+    currentInningData?.top !== null &&
+    currentInningData?.bottom === null
 
-  // サヨナラ時に "Nx" を表示するイニング番号 (試合終了・裏で得点があった場合のみ)
+  // ホームチームに "x" を表示するイニング番号。
+  // 手動で表の途中に試合終了した場合（コールド等）の既存表示も維持する。
+  const showXAtInning =
+    (isGameOver && currentHalf === 'top' && shouldShowCurrentInning) || bottomWasSkipped
+      ? currentInning
+      : null
+
+  // 9回以降の裏でホームが勝ち越した時点をサヨナラと判定する。
   const showSayonaraAtInning =
-    isGameOver && currentHalf === 'bottom' ? currentInning : null
+    currentInning >= 9 && currentHalf === 'bottom' && homeTotal > awayTotal
+      ? currentInning
+      : null
 
   const displayInnings = Array.from({ length: displayCount }, (_, i) => {
     const num = i + 1
