@@ -10,7 +10,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { getBatterCountSplit } from '../../types'
 
 const PANEL_WIDTH = 250 / 2.2
-const PANEL_HEIGHT = 390 / 2.2
+const PANEL_HEIGHT = 410 / 2.2
 
 function formatDetail(detail: BatterAverageDetail | undefined): string {
   if (!detail) return '-- (-- - --)'
@@ -115,7 +115,7 @@ export default function BatterStatsOverlay() {
           <div className="text-[7px] leading-none font-bold text-accent mb-0.5">打者</div>
           <div
             data-testid="batter-name"
-            className="text-[10px] leading-tight font-bold truncate"
+            className="text-[12px] leading-none font-bold truncate"
             title={playerName}
           >
             {playerName}
@@ -126,7 +126,7 @@ export default function BatterStatsOverlay() {
           <div className="text-[7px] leading-none text-gray-300 mb-0.5">打率</div>
           <div
             data-testid="live-batter-average"
-            className="text-[11px] leading-tight font-bold text-yellow-300 tabular-nums"
+            className="text-[13px] leading-none font-bold text-yellow-300 tabular-nums"
           >
             {formatDetail(liveDetail)}
           </div>
@@ -139,43 +139,43 @@ export default function BatterStatsOverlay() {
             <div className="text-[9px] leading-tight text-gray-400">データなし</div>
           ) : (
             <div data-testid="situational-stats-list" className="space-y-[3px]">
-              <div data-testid="situational-stat-item" className="py-[2px]">
-                <div className="text-[8px] leading-none text-gray-300 mb-px">
+              <div data-testid="situational-stat-item" className="py-[2.25px]">
+                <div className="text-[9px] leading-none text-gray-300 mb-px">
                   {isScoringPosition ? '得点圏打率' : '非得点圏打率'}
                 </div>
-                <div className="text-[10px] leading-none font-bold tabular-nums">
+                <div className="text-[11px] leading-none font-bold tabular-nums">
                   {formatDetail(situationDetail)}
                 </div>
               </div>
-              <div data-testid="situational-stat-item" className="py-[2px]">
-                <div className="text-[8px] leading-none text-gray-300 mb-px">
+              <div data-testid="situational-stat-item" className="py-[2.25px]">
+                <div className="text-[9px] leading-none text-gray-300 mb-px">
                   {baseState.label}
                 </div>
                 <div
                   data-testid="base-state-average"
-                  className="text-[10px] leading-none font-bold text-cyan-200 tabular-nums"
+                  className="text-[11px] leading-none font-bold text-cyan-200 tabular-nums"
                 >
                   {formatDetail(baseStateDetail)}
                 </div>
               </div>
-              <div data-testid="situational-stat-item" className="py-[2px]">
-                <div className="text-[8px] leading-none text-gray-300 mb-px">
+              <div data-testid="situational-stat-item" className="py-[2.25px]">
+                <div className="text-[9px] leading-none text-gray-300 mb-px">
                   {pitcherHand === 'R' ? '対右投手' : pitcherHand === 'L' ? '対左投手' : '投手左右不明'}
                 </div>
                 <div
                   data-testid="pitcher-hand-average"
-                  className="text-[10px] leading-none font-bold text-green-200 tabular-nums"
+                  className="text-[11px] leading-none font-bold text-green-200 tabular-nums"
                 >
                   {formatDetail(pitcherHandDetail)}
                 </div>
               </div>
-              <div data-testid="situational-stat-item" className="py-[2px]">
-                <div className="text-[8px] leading-none text-gray-300 mb-px">
+              <div data-testid="situational-stat-item" className="py-[2.25px]">
+                <div className="text-[9px] leading-none text-gray-300 mb-px">
                   カウント {countSplit}
                 </div>
                 <div
                   data-testid="count-average"
-                  className="text-[10px] leading-none font-bold text-orange-200 tabular-nums"
+                  className="text-[11px] leading-none font-bold text-orange-200 tabular-nums"
                 >
                   {formatDetail(countDetail)}
                 </div>
