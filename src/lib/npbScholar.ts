@@ -1,5 +1,5 @@
 import { computeLiveBattingStats, getBatterBaseState } from '../types'
-import type { BatterBaseState, BatterSituationalGameStats, LineupPlayer, Runners } from '../types'
+import type { BatterBaseState, BatterCountGameStats, BatterCountSplit, BatterPitcherHand, BatterPitcherHandGameStats, BatterSituationalGameStats, LineupPlayer, Runners } from '../types'
 
 const NPB_SCHOLAR_BASE_URL = 'https://npbscholar.com'
 const PLAYER_INDEX_URL = `${NPB_SCHOLAR_BASE_URL}/data/players_index.json`
@@ -17,6 +17,8 @@ export interface BatterSituationalStats {
   risp: BatterAverageDetail
   nonRisp: BatterAverageDetail
   byBaseState: Partial<Record<NpbScholarBaseState, BatterAverageDetail>>
+  byPitcherHand: Partial<Record<BatterPitcherHand, BatterAverageDetail>>
+  byCount: Partial<Record<BatterCountSplit, BatterAverageDetail>>
 }
 
 interface NpbScholarIndexPlayer {
@@ -30,6 +32,7 @@ interface NpbScholarIndexPlayer {
 }
 
 interface NpbScholarBaseStateRow {
+  Group?: string
   Split?: string
   AVG?: string
   AB?: string | number
@@ -83,9 +86,20 @@ function parseAverageRow(row: NpbScholarBaseStateRow | undefined): BatterAverage
 export function parseNpbScholarBatterStats(payload: unknown): BatterSituationalStats {
   const rows = (
     payload as {
-      table_tabs?: { base_state?: { rows?: NpbScholarBaseStateRow[] } }
+      table_tabs?: {
+        base_state?: { rows?: NpbScholarBaseStateRow[] }
+        vs_hand?: { rows?: NpbScholarBaseStateRow[] }
+        count?: { rows?: NpbScholarBaseStateRow[] }
+      }
     }
   )?.table_tabs?.base_state?.rows ?? []
+
+  const tableTabs = (payload as {
+    table_tabs?: {
+      vs_hand?: { rows?: NpbScholarBaseStateRow[] }
+      count?: { rows?: NpbScholarBaseStateRow[] }
+    }
+  })?.table_tabs
 
   const rowBySplit = new Map(rows.map((row) => [row.Split, row]))
   const empty = parseAverageRow(rowBySplit.get('Empty'))
@@ -102,6 +116,19 @@ export function parseNpbScholarBatterStats(payload: unknown): BatterSituationalS
     if (row) byBaseState[split] = parseAverageRow(row)
   }
 
+  const handRows = tableTabs?.vs_hand?.rows ?? []
+  const byPitcherHand: Partial<Record<BatterPitcherHand, BatterAverageDetail>> = {}
+  const right = handRows.find((row) => row.Group === '対左右' && row.Split === '対右投手')
+  const left = handRows.find((row) => row.Group === '対左右' && row.Split === '対左投手')
+  if (right) byPitcherHand.R = parseAverageRow(right)
+  if (left) byPitcherHand.L = parseAverageRow(left)
+
+  const byCount: Partial<Record<BatterCountSplit, BatterAverageDetail>> = {}
+  for (const row of tableTabs?.count?.rows ?? []) {
+    if (row.Group !== 'Count' || !row.Split || !/^[0-3]-[0-2]$/.test(row.Split)) continue
+    byCount[row.Split as BatterCountSplit] = parseAverageRow(row)
+  }
+
   return {
     risp: parseAverageRow(rowBySplit.get('RISP')),
     nonRisp: {
@@ -110,6 +137,8 @@ export function parseNpbScholarBatterStats(payload: unknown): BatterSituationalS
       hits: nonRispHits,
     },
     byBaseState,
+    byPitcherHand,
+    byCount,
   }
 }
 
@@ -133,8 +162,10 @@ export function getBaseState(runners: Runners): { split: NpbScholarBaseState; la
 export function mergeBatterSituationalStats(
   season: BatterSituationalStats,
   game: BatterSituationalGameStats | undefined,
+  pitcherHandGame?: BatterPitcherHandGameStats,
+  countGame?: BatterCountGameStats,
 ): BatterSituationalStats {
-  if (!game) return season
+  if (!game && !pitcherHandGame && !countGame) return season
 
   const baseStates: NpbScholarBaseState[] = [
     'Empty', '1st', '2nd', '3rd', '1st+2nd', '1st+3rd', '2nd+3rd', 'Loaded',
@@ -142,29 +173,44 @@ export function mergeBatterSituationalStats(
   const byBaseState: Partial<Record<NpbScholarBaseState, BatterAverageDetail>> = {}
   for (const split of baseStates) {
     const seasonLine = season.byBaseState[split]
-    const gameLine = game[split]
+    const gameLine = game?.[split]
     if (seasonLine || gameLine) byBaseState[split] = addGameLine(seasonLine, gameLine)
   }
 
   const nonRispGame = ['Empty', '1st'].reduce(
     (total, split) => ({
-      atBats: total.atBats + (game[split as NpbScholarBaseState]?.atBats ?? 0),
-      hits: total.hits + (game[split as NpbScholarBaseState]?.hits ?? 0),
+      atBats: total.atBats + (game?.[split as NpbScholarBaseState]?.atBats ?? 0),
+      hits: total.hits + (game?.[split as NpbScholarBaseState]?.hits ?? 0),
     }),
     { atBats: 0, hits: 0 },
   )
   const rispGame = ['2nd', '3rd', '1st+2nd', '1st+3rd', '2nd+3rd', 'Loaded'].reduce(
     (total, split) => ({
-      atBats: total.atBats + (game[split as NpbScholarBaseState]?.atBats ?? 0),
-      hits: total.hits + (game[split as NpbScholarBaseState]?.hits ?? 0),
+      atBats: total.atBats + (game?.[split as NpbScholarBaseState]?.atBats ?? 0),
+      hits: total.hits + (game?.[split as NpbScholarBaseState]?.hits ?? 0),
     }),
     { atBats: 0, hits: 0 },
   )
+
+  const byPitcherHand: Partial<Record<BatterPitcherHand, BatterAverageDetail>> = {}
+  for (const hand of ['R', 'L'] as const) {
+    const seasonLine = season.byPitcherHand[hand]
+    const gameLine = pitcherHandGame?.[hand]
+    if (seasonLine || gameLine) byPitcherHand[hand] = addGameLine(seasonLine, gameLine)
+  }
+
+  const byCount: Partial<Record<BatterCountSplit, BatterAverageDetail>> = { ...season.byCount }
+  for (const [split, gameLine] of Object.entries(countGame ?? {})) {
+    const countSplit = split as BatterCountSplit
+    byCount[countSplit] = addGameLine(season.byCount[countSplit], gameLine)
+  }
 
   return {
     risp: addGameLine(season.risp, rispGame),
     nonRisp: addGameLine(season.nonRisp, nonRispGame),
     byBaseState,
+    byPitcherHand,
+    byCount,
   }
 }
 

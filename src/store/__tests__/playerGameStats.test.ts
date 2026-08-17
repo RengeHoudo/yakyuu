@@ -496,6 +496,95 @@ describe('batterSituationalGameStats – 走者状況別の試合内成績', () 
 })
 
 // ─────────────────────────────────────────────
+// 左右別・カウント別の試合内打数・安打数
+// ─────────────────────────────────────────────
+
+describe('batter split game stats – 投手左右別・カウント別', () => {
+  function setPlateAppearance(
+    count: { balls: number; strikes: number },
+    throwHand?: 'L' | 'R',
+  ) {
+    useGameStore.setState({
+      currentHalf: 'top',
+      awayBatterIndex: 0,
+      batter: { name: BATTER.name, number: BATTER.number, stat: '', statLabel: '' },
+      pitcher: { name: '相手投手', number: '18', stat: '', statLabel: '', throwHand },
+      count: { ...count, outs: 0 },
+    })
+  }
+
+  it('2-1で右投手から単打を記録すると、対右と2-1へ打数1・安打1を加算する', () => {
+    setPlateAppearance({ balls: 2, strikes: 1 }, 'R')
+
+    s().recordSingle()
+
+    expect(s().batterPitcherHandGameStats['away-3']?.R).toEqual({ atBats: 1, hits: 1 })
+    expect(s().batterCountGameStats['away-3']?.['2-1']).toEqual({ atBats: 1, hits: 1 })
+  })
+
+  it('ラインナップから登板させた投手の利き腕を現在投手へ引き継ぐ', () => {
+    const homeLineup = [...initialGameState.homeLineup]
+    homeLineup[9] = {
+      ...homeLineup[9]!,
+      name: '左投手',
+      number: '21',
+      position: '投',
+      throwHand: 'L',
+    }
+    useGameStore.setState({ currentHalf: 'top', homeLineup })
+
+    s().selectBatter('home', 9)
+
+    expect(s().pitcher).toMatchObject({ name: '左投手', number: '21', throwHand: 'L' })
+  })
+
+  it('3-2で左投手からゴロを記録すると、対左と3-2へ打数だけを加算する', () => {
+    setPlateAppearance({ balls: 3, strikes: 2 }, 'L')
+
+    s().recordGroundout()
+
+    expect(s().batterPitcherHandGameStats['away-3']?.L).toEqual({ atBats: 1, hits: 0 })
+    expect(s().batterCountGameStats['away-3']?.['3-2']).toEqual({ atBats: 1, hits: 0 })
+  })
+
+  it('投手の利き腕が不明でもカウント別だけは更新する', () => {
+    setPlateAppearance({ balls: 3, strikes: 0 })
+
+    s().recordDouble()
+
+    expect(s().batterPitcherHandGameStats['away-3']).toBeUndefined()
+    expect(s().batterCountGameStats['away-3']?.['3-0']).toEqual({ atBats: 1, hits: 1 })
+  })
+
+  it('四球は左右別・カウント別の打率を変更しない', () => {
+    setPlateAppearance({ balls: 3, strikes: 2 }, 'R')
+
+    s().recordWalk()
+
+    expect(s().batterPitcherHandGameStats['away-3']).toBeUndefined()
+    expect(s().batterCountGameStats['away-3']).toBeUndefined()
+  })
+
+  it('Undoと新しい試合で左右別・カウント別成績も戻る', () => {
+    setPlateAppearance({ balls: 0, strikes: 2 }, 'R')
+    clearUndoHistory()
+    s().addStrike()
+    expect(s().batterPitcherHandGameStats['away-3']?.R).toEqual({ atBats: 1, hits: 0 })
+    expect(s().batterCountGameStats['away-3']?.['0-2']).toEqual({ atBats: 1, hits: 0 })
+
+    s().undo()
+    expect(s().batterPitcherHandGameStats['away-3']).toBeUndefined()
+    expect(s().batterCountGameStats['away-3']).toBeUndefined()
+
+    setPlateAppearance({ balls: 1, strikes: 1 }, 'L')
+    s().recordSingle()
+    s().newGame()
+    expect(s().batterPitcherHandGameStats).toEqual({})
+    expect(s().batterCountGameStats).toEqual({})
+  })
+})
+
+// ─────────────────────────────────────────────
 // 投手: setPitcherGameStats
 // ─────────────────────────────────────────────
 

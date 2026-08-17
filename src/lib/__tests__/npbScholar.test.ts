@@ -22,6 +22,19 @@ const BASE_STATE_PAYLOAD = {
         { Split: 'Loaded', AVG: '.125', AB: '8', H: '1' },
       ],
     },
+    vs_hand: {
+      rows: [
+        { Group: '対左右', Split: '対右投手', AVG: '.256', AB: '234', H: '60' },
+        { Group: '対左右', Split: '対左投手', AVG: '.259', AB: '135', H: '35' },
+      ],
+    },
+    count: {
+      rows: [
+        { Group: 'Count', Split: '2-1', AVG: '.526', AB: '19', H: '10' },
+        { Group: 'Count', Split: '3-2', AVG: '.125', AB: '24', H: '3' },
+        { Group: 'Count', Split: 'Strike 0', AVG: '.286', AB: '98', H: '28' },
+      ],
+    },
   },
 }
 
@@ -38,6 +51,16 @@ describe('parseNpbScholarBatterStats', () => {
     const stats = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
 
     expect(stats.nonRisp).toEqual({ average: '.233', atBats: 120, hits: 28 })
+  })
+
+  it('投手の左右別と正確なカウント別を抽出し、Strike集約行は使用しない', () => {
+    const stats = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
+
+    expect(stats.byPitcherHand.R).toEqual({ average: '.256', atBats: 234, hits: 60 })
+    expect(stats.byPitcherHand.L).toEqual({ average: '.259', atBats: 135, hits: 35 })
+    expect(stats.byCount['2-1']).toEqual({ average: '.526', atBats: 19, hits: 10 })
+    expect(stats.byCount['3-2']).toEqual({ average: '.125', atBats: 24, hits: 3 })
+    expect(Object.keys(stats.byCount)).not.toContain('Strike 0')
   })
 })
 
@@ -97,6 +120,20 @@ describe('mergeBatterSituationalStats', () => {
     expect(merged.nonRisp).toEqual({ average: '.236', atBats: 123, hits: 29 })
     expect(merged.byBaseState.Empty).toEqual({ average: '.208', atBats: 101, hits: 21 })
     expect(merged.byBaseState['1st']).toEqual({ average: '.364', atBats: 22, hits: 8 })
+  })
+
+  it('左右別とカウント別へ、その試合の打数・安打数を合算する', () => {
+    const season = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
+
+    const merged = mergeBatterSituationalStats(
+      season,
+      undefined,
+      { R: { atBats: 2, hits: 1 } },
+      { '2-1': { atBats: 1, hits: 1 } },
+    )
+
+    expect(merged.byPitcherHand.R).toEqual({ average: '.258', atBats: 236, hits: 61 })
+    expect(merged.byCount['2-1']).toEqual({ average: '.550', atBats: 20, hits: 11 })
   })
 })
 

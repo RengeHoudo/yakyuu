@@ -6,24 +6,35 @@ function PlayerForm({
   label,
   player,
   onApply,
+  showThrowHand = false,
 }: {
   label: string
   player: PlayerInfo
   onApply: (info: PlayerInfo) => void
+  showThrowHand?: boolean
 }) {
   const [name, setName] = useState(player.name)
   const [number, setNumber] = useState(player.number)
   const [stat, setStat] = useState(player.stat)
   const [statLabel, setStatLabel] = useState(player.statLabel)
+  const [throwHand, setThrowHand] = useState<'' | 'L' | 'R'>(player.throwHand ?? '')
 
   useEffect(() => {
     setName(player.name)
     setNumber(player.number)
     setStat(player.stat)
     setStatLabel(player.statLabel)
-  }, [player.name, player.number, player.stat, player.statLabel])
+    setThrowHand(player.throwHand ?? '')
+  }, [player.name, player.number, player.stat, player.statLabel, player.throwHand])
 
-  const apply = () => onApply({ name, number, stat, statLabel })
+  const applyWithThrowHand = (nextThrowHand: '' | 'L' | 'R') => onApply({
+    name,
+    number,
+    stat,
+    statLabel,
+    throwHand: nextThrowHand || undefined,
+  })
+  const apply = () => applyWithThrowHand(throwHand)
 
   return (
     <div className="space-y-2">
@@ -65,6 +76,22 @@ function PlayerForm({
           onChange={(e) => setStat(e.target.value)}
           onBlur={apply}
         />
+        {showThrowHand && (
+          <select
+            aria-label="投手の利き腕"
+            className="bg-gray-700 text-white rounded px-2 py-1.5 text-sm col-span-1"
+            value={throwHand}
+            onChange={(e) => {
+              const next = e.target.value as '' | 'L' | 'R'
+              setThrowHand(next)
+              applyWithThrowHand(next)
+            }}
+          >
+            <option value="">利き腕不明</option>
+            <option value="R">右投げ</option>
+            <option value="L">左投げ</option>
+          </select>
+        )}
       </div>
     </div>
   )
@@ -80,7 +107,7 @@ export default function PlayerControl() {
     <div className="bg-gray-800 rounded-lg p-4 space-y-4">
       <h2 className="text-white font-bold text-lg">選手情報</h2>
       <PlayerForm label="打者" player={batter} onApply={setBatter} />
-      <PlayerForm label="投手" player={pitcher} onApply={setPitcher} />
+      <PlayerForm label="投手" player={pitcher} onApply={setPitcher} showThrowHand />
     </div>
   )
 }

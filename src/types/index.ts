@@ -120,6 +120,8 @@ export interface PlayerInfo {
   number: string
   stat: string
   statLabel: string
+  /** 現在投手の利き腕。左右別打率の判定に使用する。 */
+  throwHand?: 'L' | 'R'
 }
 
 export interface LineupPlayer {
@@ -268,6 +270,20 @@ export interface BatterSituationGameLine {
 /** 1打者の走者状況別試合内成績。 */
 export type BatterSituationalGameStats = Partial<Record<BatterBaseState, BatterSituationGameLine>>
 
+/** NPB Scholarの対左右区分。 */
+export type BatterPitcherHand = 'L' | 'R'
+
+/** NPB Scholarの正確なボール-ストライク区分。 */
+export type BatterCountSplit = `${0 | 1 | 2 | 3}-${0 | 1 | 2}`
+
+/** 現在のカウントをNPB ScholarのSplit表記へ変換する。 */
+export function getBatterCountSplit(count: Pick<Count, 'balls' | 'strikes'>): BatterCountSplit {
+  return `${count.balls}-${count.strikes}` as BatterCountSplit
+}
+
+export type BatterPitcherHandGameStats = Partial<Record<BatterPitcherHand, BatterSituationGameLine>>
+export type BatterCountGameStats = Partial<Record<BatterCountSplit, BatterSituationGameLine>>
+
 /** 投手の試合中成績トラッキング用 */
 export interface PitcherGameStats {
   hitsAllowed: number
@@ -371,6 +387,10 @@ export interface GameState {
   batterGameStats: Record<string, BatterGameStats>
   /** 打者ごとの走者状況別試合内打数・安打数。キー形式: "${team}-${number}" */
   batterSituationalGameStats: Record<string, BatterSituationalGameStats>
+  /** 打者ごとの相手投手左右別試合内打数・安打数。 */
+  batterPitcherHandGameStats: Record<string, BatterPitcherHandGameStats>
+  /** 打者ごとの正確なカウント別試合内打数・安打数。 */
+  batterCountGameStats: Record<string, BatterCountGameStats>
   /** NPBボックススコアから取得した打席結果。3分ごとに自動更新 */
   boxScoreData: BoxScoreData | null
 }
@@ -802,6 +822,8 @@ export const initialGameState: GameState = {
   pitcherGameStats: {},
   batterGameStats: {},
   batterSituationalGameStats: {},
+  batterPitcherHandGameStats: {},
+  batterCountGameStats: {},
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
   pitcherHistory: [],

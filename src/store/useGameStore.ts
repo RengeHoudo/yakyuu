@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { BatterGameStats, BatterSituationalGameStats, BoxScoreData, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
-import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats, getBatterBaseState } from '../types'
+import type { BatterCountGameStats, BatterGameStats, BatterPitcherHand, BatterPitcherHandGameStats, BatterSituationGameLine, BatterSituationalGameStats, BoxScoreData, EffectType, GameState, HalfInning, LineupPlayer, MascotMode, OverlayPosition, PitcherGameStats, PlayerInfo, Runners, RunnerIndices, RunnerResponsiblePitcher, StatDisplaySettings } from '../types'
+import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats, getBatterBaseState, getBatterCountSplit } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 
@@ -29,7 +29,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'overlayOpacity', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
   'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
-  'batterGameStats', 'batterSituationalGameStats', 'boxScoreData',
+  'batterGameStats', 'batterSituationalGameStats', 'batterPitcherHandGameStats', 'batterCountGameStats', 'boxScoreData',
 ]
 
 export function extractGameState(store: GameState): GameState {
@@ -209,8 +209,11 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
   // 打席結果を、走者が進塁する前の正確な塁状況へ記録する。
   // 四球・死球・犠打・犠飛は atBats がないため状況別打率を変更しない。
   let newSituationalGameStats = s.batterSituationalGameStats ?? {}
+  let newPitcherHandGameStats = s.batterPitcherHandGameStats ?? {}
+  let newCountGameStats = s.batterCountGameStats ?? {}
   const atBatsIncrement = patch.atBats ?? 0
   if (bKey && atBatsIncrement > 0) {
+    const hitsIncrement = patch.hits ?? 0
     const baseState = getBatterBaseState(s.runners)
     const playerSituations: BatterSituationalGameStats = newSituationalGameStats[bKey] ?? {}
     const currentSituation = playerSituations[baseState] ?? { atBats: 0, hits: 0 }
@@ -220,7 +223,41 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
         ...playerSituations,
         [baseState]: {
           atBats: currentSituation.atBats + atBatsIncrement,
-          hits: currentSituation.hits + (patch.hits ?? 0),
+          hits: currentSituation.hits + hitsIncrement,
+        },
+      },
+    }
+
+    const defendingLineup = isAway ? s.homeLineup : s.awayLineup
+    const lineupPitcher = defendingLineup.find((candidate) =>
+      candidate.number === s.pitcher.number && candidate.name === s.pitcher.name
+    )
+    const pitcherHand: BatterPitcherHand | undefined = s.pitcher.throwHand ?? lineupPitcher?.throwHand
+    if (pitcherHand) {
+      const playerHands: BatterPitcherHandGameStats = newPitcherHandGameStats[bKey] ?? {}
+      const currentHand = playerHands[pitcherHand] ?? { atBats: 0, hits: 0 }
+      newPitcherHandGameStats = {
+        ...newPitcherHandGameStats,
+        [bKey]: {
+          ...playerHands,
+          [pitcherHand]: {
+            atBats: currentHand.atBats + atBatsIncrement,
+            hits: currentHand.hits + hitsIncrement,
+          },
+        },
+      }
+    }
+
+    const countSplit = getBatterCountSplit(s.count)
+    const playerCounts: BatterCountGameStats = newCountGameStats[bKey] ?? {}
+    const currentCount: BatterSituationGameLine = playerCounts[countSplit] ?? { atBats: 0, hits: 0 }
+    newCountGameStats = {
+      ...newCountGameStats,
+      [bKey]: {
+        ...playerCounts,
+        [countSplit]: {
+          atBats: currentCount.atBats + atBatsIncrement,
+          hits: currentCount.hits + hitsIncrement,
         },
       },
     }
@@ -230,6 +267,8 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
     [key]: lineup,
     batterGameStats: newBatterGameStats,
     batterSituationalGameStats: newSituationalGameStats,
+    batterPitcherHandGameStats: newPitcherHandGameStats,
+    batterCountGameStats: newCountGameStats,
   }
 }
 
@@ -1343,6 +1382,7 @@ export const useGameStore = create<GameStore>()(
               number: player.number,
               stat: player.record || '',
               statLabel: player.appearances ? `${player.appearances}登板` : '',
+              throwHand: player.throwHand,
             }
             // 投手履歴を更新
             const historyPatch = registerPitcherAppearance(s, team, player.name, player.number)
@@ -1915,6 +1955,7 @@ function advanceInningPatch(s: GameState): Partial<GameState> {
         number: pitcherPlayer.number,
         stat: pitcherPlayer.record || '',
         statLabel: pitcherPlayer.appearances ? `${pitcherPlayer.appearances}登板` : '',
+        throwHand: pitcherPlayer.throwHand,
       }
     : { ...initialPlayerInfo }
 

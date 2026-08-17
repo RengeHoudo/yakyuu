@@ -46,6 +46,13 @@ const firstStats: BatterSituationalStats = {
   byBaseState: {
     '1st+3rd': { average: '.500', atBats: 10, hits: 5 },
   },
+  byPitcherHand: {
+    R: { average: '.256', atBats: 234, hits: 60 },
+    L: { average: '.259', atBats: 135, hits: 35 },
+  },
+  byCount: {
+    '2-1': { average: '.526', atBats: 19, hits: 10 },
+  },
 }
 
 const secondStats: BatterSituationalStats = {
@@ -54,6 +61,8 @@ const secondStats: BatterSituationalStats = {
   byBaseState: {
     '1st+3rd': { average: '.250', atBats: 8, hits: 2 },
   },
+  byPitcherHand: {},
+  byCount: {},
 }
 
 const mockedFetch = vi.mocked(fetchNpbScholarBatterStats)
@@ -68,6 +77,8 @@ beforeEach(() => {
     awayLineup: [firstBatter, secondBatter],
     awayBatterIndex: 0,
     batter: { name: firstBatter.name, number: firstBatter.number, stat: '', statLabel: '' },
+    pitcher: { name: '右投手', number: '18', stat: '', statLabel: '', throwHand: 'R' },
+    count: { balls: 2, strikes: 1, outs: 0 },
     runners: { first: true, second: false, third: true },
   })
 })
@@ -75,7 +86,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('BatterStatsOverlay', () => {
-  it('名前、既存のライブ打率、得点圏打率、現在の走者別打率を表示する', async () => {
+  it('名前、ライブ打率、得点圏、走者別、投手左右別、正確なカウント別を常時表示する', async () => {
     mockedFetch.mockResolvedValue(firstStats)
 
     render(<BatterStatsOverlay />)
@@ -86,6 +97,10 @@ describe('BatterStatsOverlay', () => {
     expect(screen.getByText('得点圏打率')).toBeInTheDocument()
     expect(screen.getByText('1-3塁')).toBeInTheDocument()
     expect(screen.getByTestId('base-state-average')).toHaveTextContent('.500 (10 - 5)')
+    expect(screen.getByText('対右投手')).toBeInTheDocument()
+    expect(screen.getByTestId('pitcher-hand-average')).toHaveTextContent('.256 (234 - 60)')
+    expect(screen.getByText('カウント 2-1')).toBeInTheDocument()
+    expect(screen.getByTestId('count-average')).toHaveTextContent('.526 (19 - 10)')
   })
 
   it('非得点圏では非得点圏打率だけを表示する', async () => {
@@ -107,12 +122,20 @@ describe('BatterStatsOverlay', () => {
           '1st+3rd': { atBats: 3, hits: 2 },
         },
       },
+      batterPitcherHandGameStats: {
+        'away-51': { R: { atBats: 2, hits: 1 } },
+      },
+      batterCountGameStats: {
+        'away-51': { '2-1': { atBats: 1, hits: 1 } },
+      },
     })
 
     render(<BatterStatsOverlay />)
 
     expect(await screen.findByText('.364 (33 - 12)')).toBeInTheDocument()
     expect(screen.getByTestId('base-state-average')).toHaveTextContent('.538 (13 - 7)')
+    expect(screen.getByTestId('pitcher-hand-average')).toHaveTextContent('.258 (236 - 61)')
+    expect(screen.getByTestId('count-average')).toHaveTextContent('.550 (20 - 11)')
   })
 
   it('打者が変わると名前と打率を即時更新し、前打者の詳細を残さない', async () => {
@@ -135,7 +158,7 @@ describe('BatterStatsOverlay', () => {
     await waitFor(() => expect(screen.getByText('.200 (20 - 4)')).toBeInTheDocument())
   })
 
-  it('2.2倍時に250x340になる基準サイズを持つ', async () => {
+  it('2.2倍時に250x360になる基準サイズを持つ', async () => {
     mockedFetch.mockResolvedValue(firstStats)
 
     render(<BatterStatsOverlay />)
@@ -143,6 +166,30 @@ describe('BatterStatsOverlay', () => {
 
     const panel = screen.getByTestId('batter-stats-panel')
     expect(Number.parseFloat(panel.style.width) * 2.2).toBeCloseTo(250, 5)
-    expect(Number.parseFloat(panel.style.height) * 2.2).toBeCloseTo(340, 5)
+    expect(Number.parseFloat(panel.style.height) * 2.2).toBeCloseTo(360, 5)
+  })
+
+  it('通常打率を詳細打率より大きくし、詳細項目間に余白を持つ', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+
+    render(<BatterStatsOverlay />)
+    await screen.findByText('.333 (30 - 10)')
+
+    expect(screen.getByTestId('live-batter-average')).toHaveClass('text-[11px]', 'leading-tight')
+    expect(screen.getByTestId('situational-stats-list')).toHaveClass('space-y-[4px]')
+  })
+
+  it('打者名を小さくし、各成績ブロックに上下paddingを持つ', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+
+    render(<BatterStatsOverlay />)
+    await screen.findByText('.333 (30 - 10)')
+
+    expect(screen.getByTestId('batter-name')).toHaveClass('text-[10px]')
+    expect(screen.getByTestId('live-average-block')).toHaveClass('py-px')
+    expect(screen.getAllByTestId('situational-stat-item')).toHaveLength(4)
+    for (const item of screen.getAllByTestId('situational-stat-item')) {
+      expect(item).toHaveClass('py-px')
+    }
   })
 })
