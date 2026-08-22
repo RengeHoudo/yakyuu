@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyScorePageLineup, formatRosterOptionLabel, sortedRoster, rosterPitcherToLineupFields } from '../LineupControl'
+import { applyScorePageLineup, availablePitchers, formatRosterOptionLabel, sortedRoster, rosterPitcherToLineupFields } from '../LineupControl'
 import type { LineupPlayer, PositionCategory, RosterPlayer } from '../../../types'
 
 describe('formatRosterOptionLabel', () => {
@@ -141,6 +141,24 @@ describe('rosterPitcherToLineupFields', () => {
     const fields = rosterPitcherToLineupFields(r)
     expect(fields.appearances).toBe('')
     expect(fields.record).toBe('')
+  })
+})
+
+describe('availablePitchers', () => {
+  const roster = [
+    makePlayer('18'),
+    makePlayer('20'),
+    makePlayer('46'),
+    makePlayer('33', '内野手'),
+  ]
+  const retired = new Set(['18', '20'])
+
+  it('除外モードでは降板済み投手を候補から除く', () => {
+    expect(availablePitchers(roster, retired, true).map((p) => p.number)).toEqual(['46'])
+  })
+
+  it('除外モードをオフにすると降板済み投手も候補に残す', () => {
+    expect(availablePitchers(roster, retired, false).map((p) => p.number)).toEqual(['18', '20', '46'])
   })
 })
 

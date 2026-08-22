@@ -115,6 +115,34 @@ describe('registerPitcherAppearance', () => {
     })
     expect(history[1]).toMatchObject({ name: '栗林 良吏', isActive: false })
   })
+
+  it('降板済み投手が再登板すると、同じ履歴を再びアクティブにする', () => {
+    const state: typeof initialGameState = {
+      ...initialGameState,
+      pitcherHistory: [
+        { name: '森下 暢仁', number: '18', team: 'home', order: 0, isActive: false },
+        { name: '栗林 良吏', number: '20', team: 'home', order: 1, isActive: true },
+      ],
+    }
+
+    const patch = registerPitcherAppearance(state, 'home', '森下 暢仁', '18')
+    const history = patch.pitcherHistory!
+
+    expect(history).toHaveLength(2)
+    expect(history[0]).toMatchObject({ number: '18', order: 0, isActive: true })
+    expect(history[1]).toMatchObject({ number: '20', order: 1, isActive: false })
+  })
+})
+
+describe('降板済み投手の候補除外設定', () => {
+  it('デフォルトは現行動作どおり除外する', () => {
+    expect(s().hideRetiredPitchers).toBe(true)
+  })
+
+  it('設定をオフにできる', () => {
+    s().setHideRetiredPitchers(false)
+    expect(s().hideRetiredPitchers).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────

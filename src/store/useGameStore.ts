@@ -28,7 +28,7 @@ const DATA_KEYS: (keyof GameState)[] = [
   'pitchCount', 'gameStartTime', 'ticker', 'activeEffect', 'effectTimestamp',
   'showMascot', 'mascotMode', 'mascotImages', 'autoChangeEffect', 'showWaitingScreen',
   'overlayPositions', 'overlayScale', 'overlayOpacity', 'lineupDisplayTeam', 'pitcherStats', 'pitcherGameStats', 'runnerIndices',
-  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory',
+  'runnerResponsiblePitcher', 'lastBatterIndex', 'statDisplaySettings', 'scoreUrl', 'pitcherHistory', 'hideRetiredPitchers',
   'batterGameStats', 'batterSituationalGameStats', 'batterPitcherHandGameStats', 'batterCountGameStats', 'boxScoreData',
 ]
 
@@ -486,6 +486,8 @@ interface GameActions {
   setStatDisplaySettings: (settings: Partial<StatDisplaySettings>) => void
   /** NPBスコアページURLをセットする */
   setScoreUrl: (url: string) => void
+  /** 降板済み投手を投手選択ドロップダウンから除外するかを設定する */
+  setHideRetiredPitchers: (hide: boolean) => void
   /** ボックススコアデータをセットする */
   setBoxScoreData: (data: BoxScoreData | null) => void
   /** 打者の試合内成績を直接セット（0から編集可能） */
@@ -743,6 +745,8 @@ export const useGameStore = create<GameStore>()(
         })),
 
       setScoreUrl: (url) => set({ scoreUrl: url }),
+
+      setHideRetiredPitchers: (hide) => set({ hideRetiredPitchers: hide }),
 
       setBoxScoreData: (data) => set({ boxScoreData: data }),
 
@@ -1470,6 +1474,7 @@ export const useGameStore = create<GameStore>()(
         overlayPositions: s.overlayPositions,
         overlayScale: s.overlayScale,
         overlayOpacity: s.overlayOpacity,
+        hideRetiredPitchers: s.hideRetiredPitchers ?? true,
       })),
 
       replaceState: (state) => set(state),

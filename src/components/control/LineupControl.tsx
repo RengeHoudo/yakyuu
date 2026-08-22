@@ -281,6 +281,17 @@ export function rosterPitcherToLineupFields(r: RosterPlayer): Partial<LineupPlay
   }
 }
 
+/** 投手ドロップダウンに表示する選手を、背番号順・降板済み設定に従って返す。 */
+export function availablePitchers(
+  roster: RosterPlayer[],
+  retiredPitcherNumbers: Set<string>,
+  hideRetiredPitchers: boolean,
+): RosterPlayer[] {
+  return sortedRoster(roster)
+    .filter((r) => r.positionCategory === '投手')
+    .filter((r) => !hideRetiredPitchers || !retiredPitcherNumbers.has(r.number))
+}
+
 /** RosterPlayer（打者）を LineupPlayer の通算成績フィールドにマップする。 */
 function rosterBatterToLineupFields(r: RosterPlayer): Partial<LineupPlayer> {
   return {
@@ -639,6 +650,7 @@ function PitcherRow({
   showStats,
   gameStats,
   retiredPitcherNumbers,
+  hideRetiredPitchers,
   currentAppearance,
   isCurrentPitcher,
   teamHistory,
@@ -656,6 +668,8 @@ function PitcherRow({
   gameStats?: PitcherGameStats
   /** この試合で降板済みの投手背番号一覧 */
   retiredPitcherNumbers: Set<string>
+  /** 降板済み投手を候補から除外するか */
+  hideRetiredPitchers: boolean
   /** 現在の投手の登板履歴エントリ */
   currentAppearance?: PitcherAppearance
   /** この投手が現在登板中か */
@@ -672,9 +686,7 @@ function PitcherRow({
   currentPitcherKey: string
   onOpenGameStats: () => void
 }) {
-  const pitchers = sortedRoster(roster)
-    .filter((r) => r.positionCategory === '投手')
-    .filter((r) => !retiredPitcherNumbers.has(r.number))
+  const pitchers = availablePitchers(roster, retiredPitcherNumbers, hideRetiredPitchers)
   const appearanceLabel = currentAppearance
     ? currentAppearance.order === 0
       ? '先発'
@@ -845,6 +857,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
   const pitcherGameStats = useGameStore((s) => s.pitcherGameStats)
   const pitcher = useGameStore((s) => s.pitcher)
   const pitcherHistory = useGameStore((s) => s.pitcherHistory)
+  const hideRetiredPitchers = useGameStore((s) => s.hideRetiredPitchers ?? true)
   const pitcherStats = useGameStore((s) => s.pitcherStats)
   const pitchCount = useGameStore((s) => s.pitchCount)
 
@@ -1070,6 +1083,7 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
             showStats={showStats}
             gameStats={lineup[9]!.number ? pitcherGameStats[`${side}-${lineup[9]!.number}`] : undefined}
             retiredPitcherNumbers={retiredPitcherNumbers}
+            hideRetiredPitchers={hideRetiredPitchers}
             currentAppearance={currentAppearance}
             isCurrentPitcher={isCurrentPitcher}
             teamHistory={teamHistory}
@@ -1108,6 +1122,8 @@ function TeamLineupPanel({ side }: { side: 'away' | 'home' }) {
 export default function LineupControl() {
   const statDisplaySettings = useGameStore((s) => s.statDisplaySettings)
   const setStatDisplaySettings = useGameStore((s) => s.setStatDisplaySettings)
+  const hideRetiredPitchers = useGameStore((s) => s.hideRetiredPitchers ?? true)
+  const setHideRetiredPitchers = useGameStore((s) => s.setHideRetiredPitchers)
 
   const STAT_TOGGLES: { key: keyof typeof statDisplaySettings; label: string }[] = [
     { key: 'showBattingAvg', label: '打率' },
@@ -1125,7 +1141,21 @@ export default function LineupControl() {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-white font-bold text-lg">打順・選手</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-white font-bold text-lg">打順・選手</h2>
+        <label
+          className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none"
+          title="オフにすると、降板済みの選手も投手として再選択できます"
+        >
+          <input
+            type="checkbox"
+            checked={hideRetiredPitchers}
+            onChange={(e) => setHideRetiredPitchers(e.target.checked)}
+            className="accent-red-500"
+          />
+          降板済み投手を候補から除外
+        </label>
+      </div>
 
       <TeamLineupPanel side="away" />
       <TeamLineupPanel side="home" />

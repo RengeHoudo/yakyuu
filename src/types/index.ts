@@ -383,6 +383,8 @@ export interface GameState {
   scoreUrl: string
   /** 投手の登板履歴。試合中に登板した全投手を記録する */
   pitcherHistory: PitcherAppearance[]
+  /** 降板済み投手を投手選択ドロップダウンから除外する */
+  hideRetiredPitchers: boolean
   /** 打者ごとの試合中成績。キー形式: "${team}-${number}" (例: "away-3") */
   batterGameStats: Record<string, BatterGameStats>
   /** 打者ごとの走者状況別試合内打数・安打数。キー形式: "${team}-${number}" */
@@ -827,6 +829,7 @@ export const initialGameState: GameState = {
   statDisplaySettings: { ...defaultStatDisplaySettings },
   scoreUrl: '',
   pitcherHistory: [],
+  hideRetiredPitchers: true,
   boxScoreData: null,
 }
 
