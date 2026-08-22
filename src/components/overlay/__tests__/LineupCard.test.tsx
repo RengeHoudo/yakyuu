@@ -10,6 +10,7 @@ import '@testing-library/jest-dom/vitest'
 import { useGameStore } from '../../../store/useGameStore'
 import { initialGameState } from '../../../types'
 import type { Team, LineupPlayer, PlayerInfo, Position } from '../../../types'
+import { parseLineupCsv } from '../../../lib/csvImport'
 import LineupCard from '../LineupCard'
 
 vi.mock('../../../lib/sync', () => ({ broadcastState: vi.fn() }))
@@ -54,6 +55,28 @@ afterEach(() => {
 })
 
 describe('LineupCard 投手欄の相手チーム名表示', () => {
+  it('打順CSVから読み込んだ投打左右を表示する', () => {
+    const lineup = parseLineupCsv(`順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,投,打
+1,左打者,8,中,,,,,,,右,左
+2,右打者,3,一,,,,,,,右,右
+3,両打者,6,遊,,,,,,,右,両`)
+    useGameStore.setState({
+      awayTeam,
+      homeTeam,
+      awayLineup: lineup,
+      homeLineup: makeLineup(),
+      currentHalf: 'top' as const,
+      lineupDisplayTeam: 'away',
+      pitcher: { name: '', number: '', stat: '', statLabel: '' },
+    })
+
+    render(<LineupCard />)
+
+    expect(screen.getByText('[L]')).toBeInTheDocument()
+    expect(screen.getByText('(R)')).toBeInTheDocument()
+    expect(screen.getByText('<S>')).toBeInTheDocument()
+  })
+
   it('攻撃側=away の場合、投手欄にホームチームの shortName が表示される', () => {
     useGameStore.setState({
       awayTeam,

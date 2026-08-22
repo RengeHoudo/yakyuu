@@ -231,6 +231,62 @@ describe('parseLineupCsv \u2013 \u6295\u624b\u5217\u62e1\u5f35 (F1)', () => {
 })
 
 // ─────────────────────────────────────────────
+// parseLineupCsv — 投打左右
+// ─────────────────────────────────────────────
+
+describe('parseLineupCsv handedness', () => {
+  it('投・打列を打者と投手へ反映する', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,投,打
+1,長友 悠成,8,中,,,,,,,右,左
+10,長井 心海,18,投,,,,,,,右,右`
+    const result = parseLineupCsv(csv)
+
+    expect(result[0]).toMatchObject({
+      throwHand: 'R',
+      batHand: 'L',
+      switchHitter: false,
+    })
+    expect(result[9]).toMatchObject({
+      throwHand: 'R',
+      batHand: 'R',
+      switchHitter: false,
+    })
+  })
+
+  it('両打をスイッチヒッターとして反映する', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,投,打
+7,川原 一将,6,遊,,,,,,,右,両`
+    const result = parseLineupCsv(csv)
+
+    expect(result[6]).toMatchObject({ batHand: 'S', switchHitter: true })
+  })
+
+  it('投打列を追加しても投手成績列と衝突しない', () => {
+    const csv = `順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,セーブ,ホールド,防御率,投,打
+10,森下,18,投,,,,,,5勝3敗,20,10,2.45,右,右`
+    const result = parseLineupCsv(csv)
+
+    expect(result[9]).toMatchObject({
+      wins: '5',
+      losses: '3',
+      saves: '20',
+      holds: '10',
+      era: '2.45',
+      throwHand: 'R',
+      batHand: 'R',
+    })
+  })
+
+  it('指をDHとして読み込む', () => {
+    const csv = `順番,名前,背番号,守備
+6,東村 悠晴,14,指`
+    const result = parseLineupCsv(csv)
+
+    expect(result[5]!.position).toBe('DH')
+  })
+})
+
+// ─────────────────────────────────────────────
 // parseRosterCsv — 投手カテゴリ列拡張 (F1)
 // ─────────────────────────────────────────────
 

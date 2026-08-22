@@ -181,10 +181,11 @@ export function parseRosterCsv(text: string): RosterPlayer[] {
  * CSV テキストから LineupPlayer[] をパースする。
  *
  * 期待フォーマット（ヘッダー行あり）:
- *   順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗
+ *   順番,名前,背番号,守備,打率,HR,打点,OPS,登板数,勝敗,投,打
  *
  * - 1〜9行目: 野手（打率・HR・打点・OPS を使用）
  * - 10行目: 投手（登板数・勝敗を使用）
+ * - 投・打: roster CSV と同じく右／左／両（または R／L／S）を使用
  * - ヘッダー行は自動スキップ（1列目が数値でなければヘッダーと判定）
  */
 export function parseLineupCsv(text: string): LineupPlayer[] {
@@ -197,9 +198,28 @@ export function parseLineupCsv(text: string): LineupPlayer[] {
     throw new Error('CSVが空です')
   }
 
-  // ヘッダー行をスキップ
-  const firstCol = lines[0]!.split(',')[0]!.trim()
-  const dataLines = /^\d+$/.test(firstCol) ? lines : lines.slice(1)
+  const firstRow = lines[0]!.split(',').map((c) => c.trim())
+  const firstCol = firstRow[0]!.replace(/^\uFEFF/, '')
+  const hasHeader = !/^\d+$/.test(firstCol)
+  const headers = hasHeader ? firstRow : []
+  const dataLines = hasHeader ? lines.slice(1) : lines
+
+  const columnIndex = (aliases: string[], legacyIndex: number): number =>
+    hasHeader ? findHeaderIndex(headers, aliases) : legacyIndex
+  const battingAvgIdx = columnIndex(['打率'], 4)
+  const homeRunsIdx = columnIndex(['HR', '本塁打'], 5)
+  const rbiIdx = columnIndex(['打点', 'RBI'], 6)
+  const opsIdx = columnIndex(['OPS'], 7)
+  const appearancesIdx = columnIndex(['登板', '登板数'], 8)
+  const recordIdx = columnIndex(['勝敗', 'record'], 9)
+  const savesIdx = columnIndex(['セーブ', 'S'], 10)
+  const holdsIdx = columnIndex(['ホールド', 'H'], 11)
+  const eraIdx = columnIndex(['防御率', 'ERA'], 12)
+  const throwHandIdx = columnIndex(['投', '投げ', '投球', '投球腕', 'throwHand', 'throws'], 13)
+  const batHandIdx = columnIndex(['打', '打ち', '打席側', 'batHand', 'bats'], 14)
+  const combinedHandsIdx = hasHeader
+    ? findHeaderIndex(headers, ['投打', '投打左右', '左右', 'handedness'])
+    : -1
 
   if (dataLines.length === 0) {
     throw new Error('データ行がありません')
@@ -215,23 +235,37 @@ export function parseLineupCsv(text: string): LineupPlayer[] {
     const name = cols[1] ?? ''
     const number = cols[2] ?? ''
     const posRaw = cols[3] ?? ''
-    const position = (VALID_POSITIONS.includes(posRaw as Position) ? posRaw : '') as Position
+    const normalizedPosition = posRaw === '指' ? 'DH' : posRaw
+    const position = (VALID_POSITIONS.includes(normalizedPosition as Position) ? normalizedPosition : '') as Position
+    const combinedHands = combinedHandsIdx >= 0
+      ? parseCombinedHands(cols[combinedHandsIdx] ?? '')
+      : {}
+    const throwHand = parseThrowHand(cols[throwHandIdx] ?? '') ?? combinedHands.throwHand
+    const batHand = parseBatHand(cols[batHandIdx] ?? '')
+      ?? combinedHands.batHand
+      ?? inferBatHandFromName(name)
+    const handedness = {
+      throwHand,
+      batHand,
+      switchHitter: batHand === 'S',
+    }
 
     if (order === 10) {
       // 投手
-      const recordStr = cols[9] ?? ''
+      const recordStr = cols[recordIdx] ?? ''
       players.push({
         order,
         name,
         number,
         position: position || '投',
-        appearances: cols[8] || undefined,
+        appearances: cols[appearancesIdx] || undefined,
         wins: parseWinsFromRecord(recordStr),
         losses: parseLossesFromRecord(recordStr),
         record: recordStr || undefined,
-        saves: cols[10] || undefined,
-        holds: cols[11] || undefined,
-        era: cols[12] || undefined,
+        saves: cols[savesIdx] || undefined,
+        holds: cols[holdsIdx] || undefined,
+        era: cols[eraIdx] || undefined,
+        ...handedness,
       })
     } else {
       // 野手
@@ -240,10 +274,11 @@ export function parseLineupCsv(text: string): LineupPlayer[] {
         name,
         number,
         position,
-        battingAvg: cols[4] ?? '',
-        homeRuns: cols[5] ?? '',
-        rbi: cols[6] ?? '',
-        ops: cols[7] ?? '',
+        battingAvg: cols[battingAvgIdx] ?? '',
+        homeRuns: cols[homeRunsIdx] ?? '',
+        rbi: cols[rbiIdx] ?? '',
+        ops: cols[opsIdx] ?? '',
+        ...handedness,
       })
     }
   }
