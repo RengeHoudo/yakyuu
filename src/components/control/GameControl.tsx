@@ -96,8 +96,9 @@ export default function GameControl() {
       } else {
         setRosterError('NPBサイトから選手データを取得できませんでした（ページ構造が変更された可能性あり）。「選手名簿 CSV 読込」で手動インポートしてください。')
       }
-    } catch {
-      setRosterError('NPB名簿の取得に失敗しました。ネットワーク接続を確認してください。手動でCSVをインポートすることもできます。')
+    } catch (error) {
+      const detail = error instanceof Error ? `（${error.message}）` : ''
+      setRosterError(`NPB名簿の取得に失敗しました${detail}。時間をおいて再試行するか、手動でCSVをインポートしてください。`)
     } finally {
       setLoadingTeam(null)
     }
