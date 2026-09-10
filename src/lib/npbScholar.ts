@@ -21,6 +21,16 @@ export interface BatterSituationalStats {
   byCount: Partial<Record<BatterCountSplit, BatterAverageDetail>>
 }
 
+export interface PitcherSeasonStats {
+  era: string | null
+  whip: string | null
+  average?: BatterAverageDetail
+  byBatterHand: Partial<Record<'L' | 'R', BatterAverageDetail>>
+  onBasePct: string | null
+  walks: number | null
+  hitByPitch: number | null
+}
+
 interface NpbScholarIndexPlayer {
   slug?: string
   player_slug?: string
@@ -28,6 +38,7 @@ interface NpbScholarIndexPlayer {
   player_name?: string
   name?: string
   batter_name?: string
+  pitcher_name?: string
   team_name?: string
 }
 
@@ -43,6 +54,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 
 let playerIndexPromise: Promise<NpbScholarIndexPlayer[]> | null = null
 const batterStatsPromises = new Map<string, Promise<BatterSituationalStats | null>>()
+const pitcherStatsPromises = new Map<string, Promise<PitcherSeasonStats | null>>()
 
 function normalizeLookupText(value: string): string {
   return value
@@ -139,6 +151,69 @@ export function parseNpbScholarBatterStats(payload: unknown): BatterSituationalS
     byBaseState,
     byPitcherHand,
     byCount,
+  }
+}
+
+/** 投手JSONの欠損値は0と区別する。 */
+function optionalNumber(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  if (typeof value === 'string' && !value.trim()) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+type PitcherStatRow = Record<string, unknown>
+
+function parsePitcherAverage(row: PitcherStatRow | undefined): BatterAverageDetail | undefined {
+  const atBats = optionalNumber(row?.AB)
+  const hits = optionalNumber(row?.H)
+  if (atBats === null || hits === null) return undefined
+  const average = optionalNumber(row?.BA)
+  return {
+    average: average === null ? formatAverage(hits, atBats) : average.toFixed(3).replace(/^0/, ''),
+    atBats,
+    hits,
+  }
+}
+
+/** NPB Scholarの投手シーズン成績と「Group: 対左右」を抽出する。 */
+export function parseNpbScholarPitcherStats(payload: unknown): PitcherSeasonStats | null {
+  const data = payload as {
+    snapshot?: { era?: unknown; whip?: unknown }
+    pitcher_batted_summary?: PitcherStatRow
+    table_tabs?: { vs_hand?: { rows?: PitcherStatRow[] } }
+  } | null
+  const summary = data?.pitcher_batted_summary
+  const handRows = data?.table_tabs?.vs_hand?.rows
+  if (!data?.snapshot && !summary && !Array.isArray(handRows)) return null
+
+  const byBatterHand: PitcherSeasonStats['byBatterHand'] = {}
+  for (const [hand, split] of [['R', '対右打者'], ['L', '対左打者']] as const) {
+    const row = Array.isArray(handRows)
+      ? handRows.find((row) => row.Group === '対左右' && row.Split === split)
+      : undefined
+    const detail = parsePitcherAverage(row)
+    if (detail) byBatterHand[hand] = detail
+  }
+
+  const average = parsePitcherAverage(summary)
+  const walks = optionalNumber(summary?.BB)
+  const hitByPitch = optionalNumber(summary?.HBP)
+  const sacrificeFlies = optionalNumber(summary?.SF)
+  const sourceObp = optionalNumber(summary?.OBP)
+  let onBasePct = sourceObp === null ? null : sourceObp.toFixed(3).replace(/^0/, '')
+  if (onBasePct === null && average && walks !== null && hitByPitch !== null && sacrificeFlies !== null) {
+    onBasePct = formatAverage(average.hits + walks + hitByPitch, average.atBats + walks + hitByPitch + sacrificeFlies)
+  }
+
+  return {
+    era: optionalNumber(data?.snapshot?.era)?.toFixed(2) ?? null,
+    whip: optionalNumber(data?.snapshot?.whip)?.toFixed(2) ?? null,
+    average,
+    byBatterHand,
+    onBasePct,
+    walks,
+    hitByPitch,
   }
 }
 
@@ -249,17 +324,38 @@ export async function fetchNpbScholarBatterStats(
   teamName = '',
   fetcher: FetchLike = fetch,
 ): Promise<BatterSituationalStats | null> {
+  return fetchNpbScholarPlayerStats(playerName, teamName, 'batter', batterStatsPromises, parseNpbScholarBatterStats, fetcher)
+}
+
+/** 選手名と所属チームから現在シーズンの投手成績を取得する。 */
+export async function fetchNpbScholarPitcherStats(
+  playerName: string,
+  teamName = '',
+  fetcher: FetchLike = fetch,
+): Promise<PitcherSeasonStats | null> {
+  return fetchNpbScholarPlayerStats(playerName, teamName, 'pitcher', pitcherStatsPromises, parseNpbScholarPitcherStats, fetcher)
+}
+
+async function fetchNpbScholarPlayerStats<T>(
+  playerName: string,
+  teamName: string,
+  playerType: 'batter' | 'pitcher',
+  cache: Map<string, Promise<T | null>>,
+  parse: (payload: unknown) => T | null,
+  fetcher: FetchLike,
+): Promise<T | null> {
   const normalizedName = normalizeLookupText(playerName)
   if (!normalizedName) return null
   const cacheKey = `${normalizedName}|${normalizeLookupText(teamName)}`
-  const cached = batterStatsPromises.get(cacheKey)
+  const cached = cache.get(cacheKey)
   if (cached) return cached
 
   const promise = (async () => {
     const players = await fetchPlayerIndex(fetcher)
     const candidates = players.filter((player) => {
-      if (player.player_type && player.player_type !== 'batter') return false
-      const candidateName = player.player_name ?? player.batter_name ?? player.name ?? ''
+      const type = player.player_type ?? (player.pitcher_name ? 'pitcher' : 'batter')
+      if (type !== playerType) return false
+      const candidateName = player.player_name ?? player.pitcher_name ?? player.batter_name ?? player.name ?? ''
       return normalizeLookupText(candidateName) === normalizedName
     })
     if (candidates.length === 0) return null
@@ -279,13 +375,13 @@ export async function fetchNpbScholarBatterStats(
       NO_CACHE,
     )
     if (!response.ok) throw new Error(`NPB Scholar 選手成績の取得に失敗しました (${response.status})`)
-    return parseNpbScholarBatterStats(await response.json())
+    return parse(await response.json())
   })().catch((error) => {
-    batterStatsPromises.delete(cacheKey)
+    cache.delete(cacheKey)
     throw error
   })
 
-  batterStatsPromises.set(cacheKey, promise)
+  cache.set(cacheKey, promise)
   return promise
 }
 
@@ -293,4 +389,5 @@ export async function fetchNpbScholarBatterStats(
 export function clearNpbScholarCache(): void {
   playerIndexPromise = null
   batterStatsPromises.clear()
+  pitcherStatsPromises.clear()
 }

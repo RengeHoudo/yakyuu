@@ -15,10 +15,10 @@ import {
   parseNpbEventRosterWithGameRosterHtml,
 } from '../npbRoster'
 import type { RosterPlayer } from '../../types'
-import freshAllStarScoreHtml from '../../../docs/copilot/オールスターゲーム.html?raw'
-import allStarRosterHtml from '../../../docs/copilot/オールスターゲームroster.html?raw'
-import freshAllStarRosterHtml from '../../../docs/copilot/出場者 _ ナミックス フレッシュオールスターゲーム2026 _ NPB.jp 日本野球機構_roster.html?raw'
-import allStarGameRosterHtml from '../../../docs/copilot/ベンチ試合速報 _ NPB.jp 日本野球機構.html?raw'
+import freshAllStarScoreHtml from './fixtures/freshallstar-2026-score.html?raw'
+import allStarRosterHtml from './fixtures/allstar-2026-roster.html?raw'
+import freshAllStarRosterHtml from './fixtures/freshallstar-2026-roster.html?raw'
+import allStarGameRosterHtml from './fixtures/allstar-2026-game-roster.html?raw'
 
 // テスト用のミニマルなNPBページHTML
 function makeHtml(teamHeading: string, rows: [string, string, string][]): string {

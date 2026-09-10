@@ -8,6 +8,7 @@ import {
 import type { BatterAverageDetail, BatterSituationalStats } from '../../lib/npbScholar'
 import { useGameStore } from '../../store/useGameStore'
 import { computeLiveBattingStats, type LineupPlayer } from '../../types'
+import PitcherStatsOverlay from './PitcherStatsOverlay'
 
 const PANEL_WIDTH = 250 / 2.2
 const PANEL_HEIGHT = 410 / 2.2
@@ -57,6 +58,21 @@ export default function BatterStatsOverlay() {
   const gameSituationalStats = playerKey ? batterSituationalGameStats[playerKey] : undefined
   const gamePitcherHandStats = playerKey ? batterPitcherHandGameStats[playerKey] : undefined
   const requestKey = `${playerName}|${teamName}`
+  // 成績やカウントの更新ではリセットせず、打順・選手・攻撃チームの変更を検出する。
+  const batterIdentity = JSON.stringify([teamKey, batterIndex, playerName, batter.number || indexedPlayer?.number])
+  const hasPitcher = Boolean(pitcher.name)
+  const [rotation, setRotation] = useState({ key: batterIdentity, pitcher: false })
+
+  useEffect(() => {
+    setRotation({ key: batterIdentity, pitcher: false })
+    if (!hasPitcher) return
+    const timer = window.setInterval(() => {
+      setRotation((previous) => ({ key: batterIdentity, pitcher: !previous.pitcher }))
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [batterIdentity, hasPitcher])
+
+  const showPitcher = hasPitcher && rotation.key === batterIdentity && rotation.pitcher
 
   const [loaded, setLoaded] = useState<LoadedStats>({ key: '', status: 'loading', data: null })
 
@@ -98,6 +114,9 @@ export default function BatterStatsOverlay() {
   )
   const pitcherHand = pitcher.throwHand ?? lineupPitcher?.throwHand
   const pitcherHandDetail = pitcherHand ? stats?.byPitcherHand[pitcherHand] : undefined
+  const batterHand = lineupPlayer?.batHand === 'S'
+    ? (pitcherHand === 'R' ? 'L' : pitcherHand === 'L' ? 'R' : undefined)
+    : lineupPlayer?.batHand
   const liveDetail = useMemo(
     () => lineupPlayer ? getLiveBatterAverage(lineupPlayer) : undefined,
     [lineupPlayer],
@@ -105,7 +124,7 @@ export default function BatterStatsOverlay() {
 
   if (!playerName) return null
 
-  return (
+  const batterPanel = (
     <div
       data-testid="batter-stats-panel"
       className="bg-black/80 backdrop-blur-sm rounded-lg px-[6px] py-[6px] text-white overflow-hidden select-none"
@@ -189,5 +208,17 @@ export default function BatterStatsOverlay() {
         </div>
       </div>
     </div>
+  )
+
+  return (
+    <>
+      <PitcherStatsOverlay
+        visible={showPitcher}
+        pitcherName={pitcher.name}
+        teamName={currentHalf === 'top' ? homeTeamName : awayTeamName}
+        batterHand={batterHand}
+      />
+      {!showPitcher && batterPanel}
+    </>
   )
 }

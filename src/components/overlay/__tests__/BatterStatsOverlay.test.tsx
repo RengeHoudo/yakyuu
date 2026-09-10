@@ -10,7 +10,7 @@ import BatterStatsOverlay from '../BatterStatsOverlay'
 
 vi.mock('../../../lib/npbScholar', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../lib/npbScholar')>()
-  return { ...actual, fetchNpbScholarBatterStats: vi.fn() }
+  return { ...actual, fetchNpbScholarBatterStats: vi.fn(), fetchNpbScholarPitcherStats: vi.fn().mockResolvedValue(null) }
 })
 
 vi.mock('../../../lib/sync', () => ({ broadcastState: vi.fn() }))
