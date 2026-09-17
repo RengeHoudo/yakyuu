@@ -72,6 +72,31 @@ const jsonResponse = (value: unknown) => new Response(JSON.stringify(value), { s
 describe('fetchNpbScholarPitcherStats', () => {
   beforeEach(clearNpbScholarCache)
 
+  it.each([
+    ['髙橋　遥人', '高橋遥人', '阪神'],
+    ['髙橋 宏斗', '高橋宏斗', '中日'],
+    ['髙 太一', '高太一', '広島'],
+    ['山﨑 颯一郎', '山崎颯一郎', 'オリックス'],
+    ['齋藤 綱記', '斎藤綱記', '中日'],
+    ['澤田 圭佑', '沢田圭佑', 'ロッテ'],
+    ['高橋 遥人', '髙橋遥人', '阪神'],
+  ])('NPB名「%s」をScholar名「%s」と照合し、投手成績を取得する', async (npbName, scholarName, team) => {
+    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse({ players: [
+      { slug: 'batter', player_type: 'batter', player_name: scholarName, team_name: team },
+      { slug: 'pitcher', pitcher_name: scholarName, team_name: team },
+    ] })).mockResolvedValueOnce(jsonResponse(payload))
+
+    const stats = await fetchNpbScholarPitcherStats(npbName, team, fetcher)
+
+    expect(stats).toEqual(parseNpbScholarPitcherStats(payload))
+    expect(stats?.average?.average).toBe('.240')
+    expect(stats?.byBatterHand.L?.average).toBe('.260')
+    expect(fetcher).toHaveBeenLastCalledWith('https://npbscholar.com/data/players/pitcher.json', { cache: 'no-store' })
+    // 字体違いでも同一選手の取得結果を共有する。
+    expect(await fetchNpbScholarPitcherStats(scholarName, team, fetcher)).toBe(stats)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
   it('投手名の空白を正規化し、打者を除外して所属チームから選ぶ', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(index)).mockResolvedValueOnce(jsonResponse(payload))
     const stats = await fetchNpbScholarPitcherStats('投手 太郎', '広島', fetcher)

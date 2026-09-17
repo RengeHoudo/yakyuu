@@ -63,6 +63,16 @@ function normalizeLookupText(value: string): string {
     .replace(/[\s・.．]/g, '')
 }
 
+// NPB公式とNPB Scholarで異なる字体を照合時だけ統一する（表示名は変更しない）。
+// NFKCでは「髙」「﨑」などは統一されない。
+const PLAYER_NAME_VARIANTS: Record<string, string> = {
+  髙: '高', 﨑: '崎', 齋: '斎', 澤: '沢', 邊: '辺', 縣: '県',
+}
+
+function normalizePlayerLookupName(value: string): string {
+  return normalizeLookupText(value).replace(/[髙﨑齋澤邊縣]/g, (char) => PLAYER_NAME_VARIANTS[char]!)
+}
+
 function toCount(value: string | number | undefined): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
@@ -344,7 +354,7 @@ async function fetchNpbScholarPlayerStats<T>(
   parse: (payload: unknown) => T | null,
   fetcher: FetchLike,
 ): Promise<T | null> {
-  const normalizedName = normalizeLookupText(playerName)
+  const normalizedName = normalizePlayerLookupName(playerName)
   if (!normalizedName) return null
   const cacheKey = `${normalizedName}|${normalizeLookupText(teamName)}`
   const cached = cache.get(cacheKey)
@@ -356,7 +366,7 @@ async function fetchNpbScholarPlayerStats<T>(
       const type = player.player_type ?? (player.pitcher_name ? 'pitcher' : 'batter')
       if (type !== playerType) return false
       const candidateName = player.player_name ?? player.pitcher_name ?? player.batter_name ?? player.name ?? ''
-      return normalizeLookupText(candidateName) === normalizedName
+      return normalizePlayerLookupName(candidateName) === normalizedName
     })
     if (candidates.length === 0) return null
 

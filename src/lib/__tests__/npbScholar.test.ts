@@ -140,6 +140,22 @@ describe('mergeBatterSituationalStats', () => {
 describe('fetchNpbScholarBatterStats', () => {
   beforeEach(() => clearNpbScholarCache())
 
+  it.each([
+    ['髙寺 望夢', '高寺望夢'],
+    ['宮﨑 敏郎', '宮崎敏郎'],
+    ['渡邊 佳明', '渡辺佳明'],
+    ['山縣 秀', '山県秀'],
+  ])('打者名「%s」もScholarの字体「%s」で照合する', async (npbName, scholarName) => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ players: [
+        { slug: 'batter', player_type: 'batter', player_name: scholarName },
+      ] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(BASE_STATE_PAYLOAD), { status: 200 }))
+
+    expect((await fetchNpbScholarBatterStats(npbName, '', fetcher))?.risp.average).toBe('.300')
+    expect(fetcher).toHaveBeenLastCalledWith('https://npbscholar.com/data/players/batter.json', { cache: 'no-store' })
+  })
+
   it('空白を除いた選手名とチーム名でslugを解決して走者別JSONを取得する', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
