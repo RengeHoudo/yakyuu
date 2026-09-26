@@ -97,7 +97,7 @@ export function fetchNpbEventRosterPage(
 /**
  * NPBボックススコアページ（box.html）を取得する。
  * scoreUrl には末尾スラッシュあり・なし両方対応。
- * 3分ごとのポーリングに使用するため、キャッシュは必ず無効化する。
+ * 5分ごとのポーリングに使用するため、キャッシュは必ず無効化する。
  */
 export function fetchBoxScorePage(scoreUrl: string): Promise<Response> {
   const base = scoreUrl.endsWith('/') ? scoreUrl : scoreUrl + '/'

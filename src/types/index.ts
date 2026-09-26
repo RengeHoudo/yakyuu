@@ -227,6 +227,39 @@ export interface BatterBoxScore {
   order: number
   name: string
   results: AtBatResult[]
+  resultInnings?: number[]
+}
+
+export interface PitcherBoxScore {
+  name: string
+  hitsAllowed: number
+  walksAllowed: number
+  hitByPitchAllowed: number
+  earnedRunsAllowed: number
+}
+
+export interface PlateAppearanceRecord {
+  scoreUrl: string
+  id: string
+  team: 'away' | 'home'
+  number: string
+  name: string
+  npbDisplayName?: string
+  order: number
+  ordinal: number
+  inning: number
+  baseState: BatterBaseState
+  countSplit: BatterCountSplit
+  pitcherHand?: BatterPitcherHand
+  original: BatterGameStats
+  stats: BatterGameStats
+  officialText?: string
+}
+
+export interface OfficialCorrection {
+  id: string
+  timestamp: number
+  text: string
 }
 
 /** ボックススコアデータ */
@@ -234,6 +267,8 @@ export interface BoxScoreData {
   away: BatterBoxScore[]
   home: BatterBoxScore[]
   fetchedAt: number
+  pitchers?: { away: PitcherBoxScore[]; home: PitcherBoxScore[] }
+  totals?: { away: number; home: number }
 }
 
 /** 打者の試合中成績トラッキング用。キー形式: "${team}-${number}" で GameState.batterGameStats に格納 */
@@ -286,6 +321,7 @@ export type BatterCountGameStats = Partial<Record<BatterCountSplit, BatterSituat
 
 /** 投手の試合中成績トラッキング用 */
 export interface PitcherGameStats {
+  hitByPitchAllowed?: number
   hitsAllowed: number
   walksAllowed: number
   runsAllowed: number
@@ -331,6 +367,8 @@ export interface OverlayPosition {
 }
 
 export interface GameState {
+  plateAppearanceRecords: PlateAppearanceRecord[]
+  officialCorrections: OfficialCorrection[]
   awayTeam: Team
   homeTeam: Team
   currentInning: number
@@ -735,6 +773,7 @@ export function formatPitcherGameSummary(gs: PitcherGameStats): string {
   parts.push(`${ip}回`)
   if (gs.hitsAllowed > 0) parts.push(`被安打${gs.hitsAllowed}`)
   if (gs.walksAllowed > 0) parts.push(`与四球${gs.walksAllowed}`)
+  if ((gs.hitByPitchAllowed ?? 0) > 0) parts.push(`与死球${gs.hitByPitchAllowed}`)
   if (gs.earnedRunsAllowed > 0) parts.push(`自責${gs.earnedRunsAllowed}`)
   if (gs.runsAllowed > gs.earnedRunsAllowed) parts.push(`失点${gs.runsAllowed}`)
   return parts.join(' ')
@@ -782,6 +821,8 @@ export const DEFAULT_OVERLAY_POSITIONS: Record<string, OverlayPosition> = {
 }
 
 export const initialGameState: GameState = {
+  plateAppearanceRecords: [],
+  officialCorrections: [],
   awayTeam: { name: '', shortName: '', color: '#538bb0' },
   homeTeam: { name: '', shortName: '', color: '#538bb0' },
   currentInning: 1,

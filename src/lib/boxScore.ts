@@ -44,7 +44,7 @@ export function classifyResult(className: string, text?: string): AtBatResultTyp
  * ボックススコアのHTMLから打者ごとの打席結果を抽出する。
  * @returns { away: 打者[], home: 打者[] } — away=先攻チーム, home=後攻チーム
  */
-export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home: BatterBoxScore[] } {
+export function parseBoxScoreHtml(html: string): Omit<BoxScoreData, 'fetchedAt'> {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
 
@@ -79,20 +79,28 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
 
       // 固定列(0-7)の後、イニング結果列を収集
       const results: AtBatResult[] = []
+      const resultInnings: number[] = []
+      const headers = Array.from(table.querySelectorAll('thead tr:last-child th')).flatMap(th =>
+        Array(Number(th.getAttribute('colspan')) || 1).fill(th.textContent?.trim()),
+      )
+      let column = 8
       for (let i = 8; i < tds.length; i++) {
         const td = tds[i]!
         const raw = td.textContent ?? ''
         const text = normalizeResultText(raw)
+        const inning = Number(headers[column]) || column - 7
+        column += Number(td.getAttribute('colspan')) || 1
         if (!text || text === '-') continue
         results.push({ text, type: classifyResult(td.className, text) })
+        resultInnings.push(inning)
       }
 
       if (!isNaN(order) && order > 0) {
         // 先発打者は常に含める
-        batters.push({ order: currentOrder, name, results })
+        batters.push({ order: currentOrder, name, results, resultInnings })
       } else if (results.length > 0) {
         // 代打・打者交代等、打順番号なしだが打席結果がある選手を含める
-        batters.push({ order: currentOrder, name, results })
+        batters.push({ order: currentOrder, name, results, resultInnings })
       }
       // 打席結果なし（投手交代のみ等）はスキップ
     }
@@ -100,8 +108,27 @@ export function parseBoxScoreHtml(html: string): { away: BatterBoxScore[]; home:
     return batters
   }
 
+  function parsePitchers(id: string) {
+    const pitchers: import('../types').PitcherBoxScore[] = []
+    for (const row of doc.querySelectorAll(`#${id} > tbody > tr`)) {
+      // 投球回のセル内にも table/td があるので、直下の列だけを読む。
+      const cells = row.querySelectorAll(':scope > td')
+      const name = cells[1]?.querySelector('a')?.textContent?.trim()
+      if (!name || cells.length !== 14) continue
+      const values = [5, 7, 8, 13].map(i => cells[i]?.textContent?.trim() ?? '')
+      if (values.some(v => !/^\d+$/.test(v))) continue
+      pitchers.push({ name, hitsAllowed: Number(values[0]), walksAllowed: Number(values[1]), hitByPitchAllowed: Number(values[2]), earnedRunsAllowed: Number(values[3]) })
+    }
+    return pitchers
+  }
+
+  const awayTotal = doc.querySelector('#tablefix_ls tr.top .total-1')?.textContent?.trim()
+  const homeTotal = doc.querySelector('#tablefix_ls tr.bottom .total-1')?.textContent?.trim()
   return {
     away: parseTable('tablefix_t_b'),
     home: parseTable('tablefix_b_b'),
+    pitchers: { away: parsePitchers('tablefix_t_p'), home: parsePitchers('tablefix_b_p') },
+    ...(awayTotal && homeTotal && /^\d+$/.test(awayTotal) && /^\d+$/.test(homeTotal)
+      ? { totals: { away: Number(awayTotal), home: Number(homeTotal) } } : {}),
   }
 }

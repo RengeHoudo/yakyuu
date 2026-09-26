@@ -5,6 +5,7 @@ import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatt
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
 import { canRecordInfieldFly, canRecordUncaughtThirdStrike } from '../lib/playConditions'
+import { recordAppearance, reconcileOfficial } from '../lib/officialCorrection'
 
 /**
  * オーバーレイページでは localStorage への書き込みを禁止する。
@@ -21,6 +22,7 @@ let _effectTimer: ReturnType<typeof setTimeout> | null = null
 const EFFECT_DURATION_MS = 6000
 
 const DATA_KEYS: (keyof GameState)[] = [
+  'plateAppearanceRecords', 'officialCorrections',
   'awayTeam', 'homeTeam', 'currentInning', 'currentHalf', 'isGameOver',
   'innings', 'awayTotal', 'homeTotal', 'awayHits', 'homeHits',
   'awayErrors', 'homeErrors', 'count', 'runners',
@@ -266,6 +268,7 @@ export function updateBatterStats(s: GameState, patch: Record<string, number>): 
 
   return {
     [key]: lineup,
+    ...((patch.plateAppearances ?? 0) > 0 ? { plateAppearanceRecords: recordAppearance(s, currentBGS, newBGS) } : {}),
     batterGameStats: newBatterGameStats,
     batterSituationalGameStats: newSituationalGameStats,
     batterPitcherHandGameStats: newPitcherHandGameStats,
@@ -747,11 +750,11 @@ export const useGameStore = create<GameStore>()(
           statDisplaySettings: { ...s.statDisplaySettings, ...settings },
         })),
 
-      setScoreUrl: (url) => set({ scoreUrl: url }),
+      setScoreUrl: (url) => set((s) => ({ scoreUrl: url, ...(s.scoreUrl !== url ? { boxScoreData: null } : {}) })),
 
       setHideRetiredPitchers: (hide) => set({ hideRetiredPitchers: hide }),
 
-      setBoxScoreData: (data) => set({ boxScoreData: data }),
+      setBoxScoreData: (data) => rawSet((s) => data ? reconcileOfficial(s, data) : { boxScoreData: null }),
 
       addRun: (team) =>
         set((s) => {
@@ -893,8 +896,8 @@ export const useGameStore = create<GameStore>()(
           const walkResult = applyWalk(s)
           const { _walkScoredPitcherKey, ...walkPatch } = walkResult
           const pgsPatch = _walkScoredPitcherKey
-            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true)
-            : {}
+            ? distributePitcherRunsPatch(s, [_walkScoredPitcherKey], true, { hitByPitchAllowed: 1 })
+            : updatePitcherGameStatsPatch(s, { hitByPitchAllowed: 1 })
           return {
             ...walkPatch,
             ...statPatch,

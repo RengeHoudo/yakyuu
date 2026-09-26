@@ -126,6 +126,7 @@ function PitcherGameStatsModal({
   const [outsRecorded, setOutsRecorded] = useState(String(currentStats.outsRecorded))
   const [hitsAllowed, setHitsAllowed] = useState(String(currentStats.hitsAllowed))
   const [walksAllowed, setWalksAllowed] = useState(String(currentStats.walksAllowed))
+  const [hitByPitchAllowed, setHitByPitchAllowed] = useState(String(currentStats.hitByPitchAllowed ?? 0))
   const [earnedRuns, setEarnedRuns] = useState(String(currentStats.earnedRunsAllowed))
 
   const toNum = (v: string) => Math.max(0, parseInt(v, 10) || 0)
@@ -138,6 +139,7 @@ function PitcherGameStatsModal({
       outsRecorded: toNum(outsRecorded),
       hitsAllowed: toNum(hitsAllowed),
       walksAllowed: toNum(walksAllowed),
+      hitByPitchAllowed: toNum(hitByPitchAllowed),
       earnedRunsAllowed: toNum(earnedRuns),
     })
     onClose()
@@ -173,6 +175,7 @@ function PitcherGameStatsModal({
           {numInput('アウト数（投球回）', outsRecorded, setOutsRecorded)}
           {numInput('被安打', hitsAllowed, setHitsAllowed)}
           {numInput('与四球', walksAllowed, setWalksAllowed)}
+          {numInput('与死球', hitByPitchAllowed, setHitByPitchAllowed)}
           {numInput('自責点', earnedRuns, setEarnedRuns)}
         </div>
         <div className="flex gap-2 pt-1">

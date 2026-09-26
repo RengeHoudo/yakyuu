@@ -25,31 +25,41 @@ function usePeriodicBroadcast() {
   }, [])
 }
 
-const BOX_SCORE_INTERVAL_MS = 3 * 60 * 1000 // 3分
+const BOX_SCORE_INTERVAL_MS = 5 * 60 * 1000 // 5分
 
-/** ボックススコアを3分ごとに自動取得し、storeに保存するフック */
-function useBoxScorePolling() {
+/** ボックススコアを5分ごとに自動取得し、公式記録で補正するフック */
+export function useBoxScorePolling() {
   const scoreUrl = useGameStore((s) => s.scoreUrl)
   const setBoxScoreData = useGameStore((s) => s.setBoxScoreData)
 
   useEffect(() => {
     if (!scoreUrl) return
+    let cancelled = false
+    let fetching = false
 
     async function fetch_() {
+      if (fetching) return
+      fetching = true
+      const gameStartTime = useGameStore.getState().gameStartTime
       try {
         const res = await fetchBoxScorePage(scoreUrl)
         if (!res.ok) return
         const html = await res.text()
         const data = parseBoxScoreHtml(html)
-        setBoxScoreData({ ...data, fetchedAt: Date.now() })
+        if (!cancelled && useGameStore.getState().scoreUrl === scoreUrl &&
+          useGameStore.getState().gameStartTime === gameStartTime) {
+          setBoxScoreData({ ...data, fetchedAt: Date.now() })
+        }
       } catch {
         // ネットワークエラーは無視（次回ポーリングで再試行）
+      } finally {
+        fetching = false
       }
     }
 
     fetch_()
     const id = setInterval(fetch_, BOX_SCORE_INTERVAL_MS)
-    return () => clearInterval(id)
+    return () => { cancelled = true; clearInterval(id) }
   }, [scoreUrl, setBoxScoreData])
 }
 
