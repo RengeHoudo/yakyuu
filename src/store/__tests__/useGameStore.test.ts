@@ -3252,6 +3252,7 @@ describe('打者成績自動更新', () => {
   })
 
   it('recordUncaughtThirdStrike: strikeouts+1, PA+1, gameAtBats+1', () => {
+    useGameStore.setState({ count: { balls: 0, strikes: 2, outs: 0 } })
     s().recordUncaughtThirdStrike()
     const batter = s().awayLineup[0]!
     expect(Number(batter.strikeouts)).toBe(1)

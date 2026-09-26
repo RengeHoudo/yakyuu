@@ -4,6 +4,7 @@ import type { BatterCountGameStats, BatterGameStats, BatterPitcherHand, BatterPi
 import { defaultBatterGameStats, initialGameState, initialPlayerInfo, formatBatterStat, DEFAULT_OVERLAY_POSITIONS, defaultPitcherGameStats, computeLiveBattingStats, getBatterBaseState, getBatterCountSplit } from '../types'
 import { broadcastState } from '../lib/sync'
 import { backupToIDB, restoreFromIDB } from '../lib/idbBackup'
+import { canRecordInfieldFly, canRecordUncaughtThirdStrike } from '../lib/playConditions'
 
 /**
  * オーバーレイページでは localStorage への書き込みを禁止する。
@@ -428,6 +429,8 @@ interface GameActions {
   recordGroundout: () => void
   recordFlyout: () => void
   recordForceOut: () => void
+  recordInfieldFly: () => void
+  recordThirdBaseForceOut: () => void
   recordFieldersChoice: () => void
   recordSacrificeBuntFC: () => void
   recordDoublePlay: () => void
@@ -977,6 +980,37 @@ export const useGameStore = create<GameStore>()(
       recordGroundout: () => set((s) => applyOutPlay(s, 1)),
       recordFlyout: () => set((s) => applyOutPlay(s, 1)),
 
+      recordInfieldFly: () => {
+        if (!canRecordInfieldFly(get())) return
+        set((s) => applyOutPlay(s, 1))
+      },
+
+      recordThirdBaseForceOut: () => {
+        if (!get().runners.second) return
+        set((s) => {
+          const outPatch = applyOutPlay(s, 1)
+          if (s.count.outs === 2) return outPatch
+
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          // 二塁走者をアウトにし、一塁走者→二塁、打者→一塁。三塁走者は保持する。
+          return {
+            ...outPatch,
+            runners: { ...s.runners, first: true, second: s.runners.first },
+            runnerIndices: {
+              ...s.runnerIndices,
+              first: currentBatterIdx,
+              second: s.runners.first ? s.runnerIndices.first : null,
+            },
+            runnerResponsiblePitcher: {
+              ...s.runnerResponsiblePitcher,
+              first: `${defTeam}-${s.pitcher.number}`,
+              second: s.runners.first ? s.runnerResponsiblePitcher.first : null,
+            },
+          }
+        })
+      },
+
       recordForceOut: () =>
         set((s) => {
           // 走者がいない場合は封殺は成立しないので何もしない
@@ -1236,7 +1270,8 @@ export const useGameStore = create<GameStore>()(
           }
         }),
 
-      recordUncaughtThirdStrike: () =>
+      recordUncaughtThirdStrike: () => {
+        if (!canRecordUncaughtThirdStrike(get())) return
         set((s) => {
           const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
           // 振り逃げ: 打者→1塁、フォース押し出し（2アウト時のみ1塁走者あり可）
@@ -1253,7 +1288,8 @@ export const useGameStore = create<GameStore>()(
             lastBatterIndex: currentBatterIdx,
             ...advanceBatterPatch(s),
           }
-        }),
+        })
+      },
 
       recordError: () =>
         set((s) => {
