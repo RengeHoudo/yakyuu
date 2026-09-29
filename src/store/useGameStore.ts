@@ -434,6 +434,7 @@ interface GameActions {
   recordForceOut: () => void
   recordInfieldFly: () => void
   recordThirdBaseForceOut: () => void
+  recordHomeForceOut: () => void
   recordFieldersChoice: () => void
   recordSacrificeBuntFC: () => void
   recordDoublePlay: () => void
@@ -986,6 +987,32 @@ export const useGameStore = create<GameStore>()(
       recordInfieldFly: () => {
         if (!canRecordInfieldFly(get())) return
         set((s) => applyOutPlay(s, 1))
+      },
+
+      recordHomeForceOut: () => {
+        if (!get().runners.third) return
+        set((s) => {
+          const outPatch = applyOutPlay(s, 1)
+          if (s.count.outs === 2) return outPatch
+
+          const currentBatterIdx = s.currentHalf === 'top' ? s.awayBatterIndex : s.homeBatterIndex
+          const defTeam = s.currentHalf === 'top' ? 'home' : 'away'
+          // 三塁走者を本塁でアウトにし、残る走者と打者を一つずつ進める。
+          return {
+            ...outPatch,
+            runners: { first: true, second: s.runners.first, third: s.runners.second },
+            runnerIndices: {
+              first: currentBatterIdx,
+              second: s.runners.first ? s.runnerIndices.first : null,
+              third: s.runners.second ? s.runnerIndices.second : null,
+            },
+            runnerResponsiblePitcher: {
+              first: `${defTeam}-${s.pitcher.number}`,
+              second: s.runners.first ? s.runnerResponsiblePitcher.first : null,
+              third: s.runners.second ? s.runnerResponsiblePitcher.second : null,
+            },
+          }
+        })
       },
 
       recordThirdBaseForceOut: () => {

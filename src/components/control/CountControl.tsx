@@ -26,6 +26,7 @@ export default function CountControl() {
   const recordForceOut = useGameStore((s) => s.recordForceOut)
   const recordInfieldFly = useGameStore((s) => s.recordInfieldFly)
   const recordThirdBaseForceOut = useGameStore((s) => s.recordThirdBaseForceOut)
+  const recordHomeForceOut = useGameStore((s) => s.recordHomeForceOut)
   const recordFieldersChoice = useGameStore((s) => s.recordFieldersChoice)
   const recordSacrificeBuntFC = useGameStore((s) => s.recordSacrificeBuntFC)
   const recordSacrificeBunt = useGameStore((s) => s.recordSacrificeBunt)
@@ -281,6 +282,14 @@ export default function CountControl() {
             className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
           >
             三塁封殺
+          </button>
+          <button
+            onClick={recordHomeForceOut}
+            disabled={!runners.third}
+            title="三塁走者がいるときに記録できます"
+            className="flex-1 bg-red-900 hover:bg-red-800 disabled:opacity-30 text-white px-2 py-2 rounded text-sm font-bold"
+          >
+            本塁封殺
           </button>
         </div>
         <div className="flex gap-2">

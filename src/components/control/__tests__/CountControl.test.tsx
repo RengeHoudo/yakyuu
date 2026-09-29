@@ -48,6 +48,7 @@ describe('アウト・振逃ボタンの有効条件', () => {
           render(<CountControl />)
           expect(screen.getByRole('button', { name: 'インフィールドフライ' })).toHaveProperty('disabled', !(outs < 2 && first && second))
           expect(screen.getByRole('button', { name: '三塁封殺' })).toHaveProperty('disabled', !second)
+          expect(screen.getByRole('button', { name: '本塁封殺' })).toHaveProperty('disabled', !Boolean(bases & 4))
           expect(screen.getByRole('button', { name: '振逃' })).toHaveProperty('disabled', !(strikes === 2 && (!first || outs === 2)))
         })
       }
@@ -105,6 +106,68 @@ it('三塁封殺の3アウト目で得点せず攻守交代する', () => {
   expect(state().awayBatterIndex).toBe(4)
   expect(state().awayTotal).toBe(0)
   expect(state().pitcherGameStats['home-21']?.outsRecorded).toBe(1)
+})
+
+it.each(['top', 'bottom'] as const)('本塁封殺は得点せず走者を入れ替え、取り消せる (%s)', (currentHalf) => {
+  useGameStore.setState({ currentHalf, homeBatterIndex: 3 })
+  const before = extractGameState(state())
+  const lineupKey = currentHalf === 'top' ? 'awayLineup' : 'homeLineup'
+  const batterKey = currentHalf === 'top' ? 'awayBatterIndex' : 'homeBatterIndex'
+  const pitcherKey = currentHalf === 'top' ? 'home-21' : 'away-21'
+  render(<CountControl />)
+  fireEvent.click(screen.getByRole('button', { name: '本塁封殺' }))
+  expect(state().count).toEqual({ balls: 0, strikes: 0, outs: 1 })
+  expect(state().runners).toEqual({ first: true, second: true, third: true })
+  expect(state().runnerIndices).toEqual({ first: 3, second: 0, third: 1 })
+  expect(state().runnerResponsiblePitcher).toEqual({ first: pitcherKey, second: 'home-18', third: 'home-19' })
+  expect(state()[batterKey]).toBe(4)
+  expect(state().lastBatterIndex).toBe(3)
+  expect(state()[lineupKey][3]?.gameAtBats).toBe(1)
+  expect(state().pitcherGameStats[pitcherKey]?.outsRecorded).toBe(1)
+  expect(state().pitchCount).toBe(11)
+  expect([state().awayTotal, state().homeTotal, state().awayHits, state().homeHits]).toEqual([0, 0, 0, 0])
+  act(() => state().undo())
+  expect(extractGameState(state())).toEqual(before)
+})
+
+it('本塁封殺の3アウト目で得点せず攻守交代する', () => {
+  useGameStore.setState({ count: { balls: 1, strikes: 2, outs: 2 } })
+  render(<CountControl />)
+  fireEvent.click(screen.getByRole('button', { name: '本塁封殺' }))
+  expect(state().currentHalf).toBe('bottom')
+  expect(state().count).toEqual({ balls: 0, strikes: 0, outs: 0 })
+  expect(state().runners).toEqual({ first: false, second: false, third: false })
+  expect(state().runnerIndices).toEqual({ first: null, second: null, third: null })
+  expect(state().runnerResponsiblePitcher).toEqual({ first: null, second: null, third: null })
+  expect(state().awayBatterIndex).toBe(4)
+  expect(state().awayTotal).toBe(0)
+  expect(state().pitcherGameStats['home-21']?.outsRecorded).toBe(1)
+})
+
+it.each([0, 1, 2, 3])('本塁封殺は三塁走者なしでは状態も履歴も変更しない (bases=%s)', (bases) => {
+  useGameStore.setState({ runners: { first: Boolean(bases & 1), second: Boolean(bases & 2), third: Boolean(bases & 4) } })
+  const before = extractGameState(state())
+  const undoCount = state().undoCount
+  state().recordHomeForceOut()
+  expect(extractGameState(state())).toEqual(before)
+  expect(state().undoCount).toBe(undoCount)
+})
+
+it.each([0, 1, 2, 3])('本塁封殺は三塁走者がいれば記録できる (otherBases=%s)', (bases) => {
+  const first = Boolean(bases & 1)
+  const second = Boolean(bases & 2)
+  useGameStore.setState({
+    runners: { first, second, third: true },
+    runnerIndices: { first: first ? 0 : null, second: second ? 1 : null, third: 2 },
+    runnerResponsiblePitcher: { first: first ? 'home-18' : null, second: second ? 'home-19' : null, third: 'home-20' },
+  })
+  render(<CountControl />)
+  fireEvent.click(screen.getByRole('button', { name: '本塁封殺' }))
+  expect(state().count.outs).toBe(1)
+  expect(state().runners).toEqual({ first: true, second: first, third: second })
+  expect(state().runnerIndices).toEqual({ first: 3, second: first ? 0 : null, third: second ? 1 : null })
+  expect(state().runnerResponsiblePitcher).toEqual({ first: 'home-21', second: first ? 'home-18' : null, third: second ? 'home-19' : null })
+  expect(state().awayTotal).toBe(0)
 })
 
 it('2アウト一塁走者ありの振逃はアウトを増やさず打者を出塁させる', () => {
