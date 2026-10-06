@@ -7,6 +7,11 @@ export default defineConfig({
   base: '/yakyuu/',
   server: {
     proxy: {
+      '/api/nf3/': {
+        target: 'https://nf3.sakura.ne.jp',
+        changeOrigin: true,
+        rewrite: (path) => path.replace('/api/nf3/', '/'),
+      },
       '/api/npb-roster': {
         target: 'https://npb.jp',
         changeOrigin: true,

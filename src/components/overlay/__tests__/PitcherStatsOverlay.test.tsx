@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchNpbScholarBatterStats, fetchNpbScholarPitcherStats } from '../../../lib/npbScholar'
+import { fetchNf3BatterStats } from '../../../lib/nf3'
 import { clearUndoHistory, useGameStore } from '../../../store/useGameStore'
 import { initialGameState, type LineupPlayer } from '../../../types'
 import BatterStatsOverlay from '../BatterStatsOverlay'
@@ -12,6 +13,7 @@ vi.mock('../../../lib/npbScholar', async (importOriginal) => ({
   fetchNpbScholarPitcherStats: vi.fn(),
 }))
 vi.mock('../../../lib/sync', () => ({ broadcastState: vi.fn() }))
+vi.mock('../../../lib/nf3', () => ({ fetchNf3BatterStats: vi.fn().mockResolvedValue(null) }))
 vi.mock('../../../lib/idbBackup', () => ({
   backupToIDB: vi.fn(), restoreFromIDB: vi.fn().mockResolvedValue(null),
 }))
@@ -34,6 +36,7 @@ beforeEach(() => {
   clearUndoHistory()
   vi.mocked(fetchNpbScholarBatterStats).mockReset().mockResolvedValue(null)
   vi.mocked(fetchNpbScholarPitcherStats).mockReset().mockResolvedValue(pitcherStats)
+  vi.mocked(fetchNf3BatterStats).mockReset().mockResolvedValue(null)
   useGameStore.setState({
     ...initialGameState,
     awayTeam: { name: '打撃側', shortName: '攻', color: '#123456' },
@@ -173,7 +176,7 @@ describe('打者・投手の成績切り替え', () => {
     await mount()
     await advance(15000)
     expect(screen.getByTestId('pitcher-name')).toHaveTextContent('投手A')
-    expect(screen.getByText('データなし')).toBeInTheDocument()
+    expect(screen.getByText(reason === '通信失敗' ? '取得失敗・再試行待ち' : 'データなし')).toBeInTheDocument()
     await advance(15000)
     expect(screen.getByTestId('batter-stats-panel')).toBeInTheDocument()
   })
@@ -184,6 +187,41 @@ describe('打者・投手の成績切り替え', () => {
     await advance(30000)
     expect(screen.getByTestId('batter-stats-panel')).toBeInTheDocument()
     expect(fetchNpbScholarPitcherStats).not.toHaveBeenCalled()
+    cleanup()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('通信復旧後は同じ投手・打者でも60秒後に再取得し、解除時に再試行を停止する', async () => {
+    vi.mocked(fetchNpbScholarPitcherStats).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(pitcherStats)
+    vi.mocked(fetchNpbScholarBatterStats).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({
+      byBaseState: {}, byPitcherHand: { R: { average: '.250', atBats: 4, hits: 1 } }, byCount: {},
+    })
+    await mount()
+    expect(screen.getByText('取得失敗・再試行待ち')).toBeInTheDocument()
+    await advance(60000)
+    expect(screen.getByTestId('pitcher-hand-average')).toHaveTextContent('.250 (4 - 1)')
+    expect(screen.getByTestId('base-state-average')).toHaveTextContent('-- (-- - --)')
+    await advance(15000)
+    expect(screen.getByTestId('pitcher-era')).toHaveTextContent('2.50')
+    expect(fetchNpbScholarPitcherStats).toHaveBeenCalledTimes(2)
+    expect(fetchNpbScholarBatterStats).toHaveBeenCalledTimes(2)
+    cleanup()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('nf3だけの通信失敗を再試行し、成功済みのScholarは再取得しない', async () => {
+    vi.mocked(fetchNf3BatterStats).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({
+      risp: { average: '.250', atBats: 40, hits: 10 },
+      nonRisp: { average: '.300', atBats: 100, hits: 30 },
+      byBaseState: { Empty: { average: '.300', atBats: 100, hits: 30 } },
+      byPitcherHand: {}, byCount: {},
+    })
+    await mount()
+    expect(screen.getByText('取得失敗・再試行待ち')).toBeInTheDocument()
+    await advance(60000)
+    expect(screen.getByTestId('base-state-average')).toHaveTextContent('.300 (100 - 30)')
+    expect(fetchNf3BatterStats).toHaveBeenCalledTimes(2)
+    expect(fetchNpbScholarBatterStats).toHaveBeenCalledTimes(1)
     cleanup()
     expect(vi.getTimerCount()).toBe(0)
   })

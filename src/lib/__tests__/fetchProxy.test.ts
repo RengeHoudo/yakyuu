@@ -1,9 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildCorsProxyUrl, fetchNpbRosterPage } from '../fetchProxy'
+import { buildCorsProxyUrl, fetchNf3Page, fetchNpbRosterPage } from '../fetchProxy'
 
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+})
+
+describe('nf3 fetch', () => {
+  it('開発時はViteプロキシを使用する', async () => {
+    vi.stubEnv('PROD', false)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    await fetchNf3Page('/Central/C/f/0_stat.htm')
+    expect(fetch).toHaveBeenCalledWith('/api/nf3/Central/C/f/0_stat.htm', { cache: 'no-store' })
+  })
+
+  it('本番ではHTMLを保持するCORSプロキシを使用し、専用設定を反映する', async () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('VITE_NF3_PROXY_BASE', 'https://proxy.example/')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    await fetchNf3Page('/Central/C/f/0_stat.htm')
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/proxy\.example\/https:\/\/nf3\.sakura\.ne\.jp\/Central\/C\/f\/0_stat\.htm\?_cb=\d+$/),
+      { cache: 'no-store', headers: { 'x-respond-with': 'html', 'x-no-cache': 'true' } },
+    )
+  })
 })
 
 describe('buildCorsProxyUrl cache-busting', () => {

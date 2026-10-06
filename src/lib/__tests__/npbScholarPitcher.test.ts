@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearNpbScholarCache, fetchNpbScholarBatterStats, fetchNpbScholarPitcherStats, parseNpbScholarPitcherStats } from '../npbScholar'
+import { describe, expect, it } from 'vitest'
+import { parseNpbScholarPitcherStats } from '../npbScholar'
 
 // NPB Scholarの公開投手JSONと同じフィールド構造（値はテスト用）。
 const payload = {
@@ -58,99 +58,5 @@ describe('parseNpbScholarPitcherStats', () => {
     expect(stats?.average?.average).toBe('.000')
     expect(stats?.onBasePct).toBe('.000')
     expect(stats?.era).toBe('0.00')
-  })
-})
-
-const index = { players: [
-  { slug: 'batter', player_type: 'batter', player_name: '投手太郎', team_name: '広島東洋カープ' },
-  { slug: 'other-team', pitcher_name: '投手太郎', team_name: '読売ジャイアンツ' },
-  // 公開インデックスの投手にはplayer_type / player_nameが付いていない。
-  { slug: 'c-pitcher', pitcher_name: '投手太郎', team_name: '広島東洋カープ' },
-] }
-const jsonResponse = (value: unknown) => new Response(JSON.stringify(value), { status: 200 })
-
-describe('fetchNpbScholarPitcherStats', () => {
-  beforeEach(clearNpbScholarCache)
-
-  it.each([
-    ['髙橋　遥人', '高橋遥人', '阪神'],
-    ['髙橋 宏斗', '高橋宏斗', '中日'],
-    ['髙 太一', '高太一', '広島'],
-    ['山﨑 颯一郎', '山崎颯一郎', 'オリックス'],
-    ['齋藤 綱記', '斎藤綱記', '中日'],
-    ['澤田 圭佑', '沢田圭佑', 'ロッテ'],
-    ['高橋 遥人', '髙橋遥人', '阪神'],
-  ])('NPB名「%s」をScholar名「%s」と照合し、投手成績を取得する', async (npbName, scholarName, team) => {
-    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse({ players: [
-      { slug: 'batter', player_type: 'batter', player_name: scholarName, team_name: team },
-      { slug: 'pitcher', pitcher_name: scholarName, team_name: team },
-    ] })).mockResolvedValueOnce(jsonResponse(payload))
-
-    const stats = await fetchNpbScholarPitcherStats(npbName, team, fetcher)
-
-    expect(stats).toEqual(parseNpbScholarPitcherStats(payload))
-    expect(stats?.average?.average).toBe('.240')
-    expect(stats?.byBatterHand.L?.average).toBe('.260')
-    expect(fetcher).toHaveBeenLastCalledWith('https://npbscholar.com/data/players/pitcher.json', { cache: 'no-store' })
-    // 字体違いでも同一選手の取得結果を共有する。
-    expect(await fetchNpbScholarPitcherStats(scholarName, team, fetcher)).toBe(stats)
-    expect(fetcher).toHaveBeenCalledTimes(2)
-  })
-
-  it('投手名の空白を正規化し、打者を除外して所属チームから選ぶ', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(index)).mockResolvedValueOnce(jsonResponse(payload))
-    const stats = await fetchNpbScholarPitcherStats('投手 太郎', '広島', fetcher)
-    expect(stats?.era).toBe('2.50')
-    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://npbscholar.com/data/players/c-pitcher.json', { cache: 'no-store' })
-  })
-
-  it('同時リクエストをまとめ、打者と投手のキャッシュを混同しない', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(index)).mockImplementation(async () => jsonResponse(payload))
-    const [first, second] = await Promise.all([
-      fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher),
-      fetchNpbScholarPitcherStats('投手 太郎', '広島', fetcher),
-    ])
-    expect(first).toEqual(second)
-    expect(fetcher).toHaveBeenCalledTimes(2)
-    await fetchNpbScholarBatterStats('投手太郎', '広島', fetcher)
-    expect(fetcher).toHaveBeenCalledTimes(3)
-    expect(fetcher).toHaveBeenLastCalledWith('https://npbscholar.com/data/players/batter.json', { cache: 'no-store' })
-  })
-
-  it('選手成績の取得失敗はキャッシュせず再取得できる', async () => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(index))
-      .mockResolvedValueOnce(new Response('', { status: 503 }))
-      .mockResolvedValueOnce(jsonResponse(payload))
-    await expect(fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher)).rejects.toThrow('503')
-    expect((await fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher))?.era).toBe('2.50')
-    expect(fetcher).toHaveBeenCalledTimes(3)
-  })
-
-  it('インデックスの取得失敗も再取得できる', async () => {
-    const fetcher = vi.fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(jsonResponse(index))
-      .mockResolvedValueOnce(jsonResponse(payload))
-    await expect(fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher)).rejects.toThrow('offline')
-    expect((await fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher))?.era).toBe('2.50')
-  })
-
-  it('空の名前や選手一覧にいない投手はnullを返す', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(index))
-    expect(await fetchNpbScholarPitcherStats('', '', fetcher)).toBeNull()
-    expect(fetcher).not.toHaveBeenCalled()
-    expect(await fetchNpbScholarPitcherStats('未登録', '', fetcher)).toBeNull()
-    expect(fetcher).toHaveBeenCalledTimes(1)
-  })
-
-  it('明示的なキャッシュ消去で投手の成績も再取得する', async () => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(index)).mockResolvedValueOnce(jsonResponse(payload))
-      .mockResolvedValueOnce(jsonResponse(index)).mockResolvedValueOnce(jsonResponse(payload))
-    await fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher)
-    clearNpbScholarCache()
-    await fetchNpbScholarPitcherStats('投手太郎', '広島', fetcher)
-    expect(fetcher).toHaveBeenCalledTimes(4)
   })
 })

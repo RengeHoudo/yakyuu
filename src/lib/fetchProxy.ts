@@ -35,15 +35,24 @@ function isProduction(): boolean {
  * CORSプロキシ用URLを生成する。
  * プロキシサーバー側キャッシュを回避するため _cb パラメータを付与する。
  */
-export function buildCorsProxyUrl(targetUrl: string): string {
+export function buildCorsProxyUrl(targetUrl: string, base = NPB_PROXY_BASE): string {
   const separator = targetUrl.includes('?') ? '&' : '?'
   const busted = `${targetUrl}${separator}_cb=${Date.now()}`
-  const proxyBase = NPB_PROXY_BASE.endsWith('/') ? NPB_PROXY_BASE : `${NPB_PROXY_BASE}/`
+  const proxyBase = base.endsWith('/') ? base : `${base}/`
   return `${proxyBase}${busted}`
 }
 
 function fetchProductionPage(targetUrl: string): Promise<Response> {
   return fetch(buildCorsProxyUrl(targetUrl), PROXY_REQUEST)
+}
+
+/** nf3 は CORS 非対応なので開発時・本番ともHTMLプロキシを使う。 */
+export function fetchNf3Page(path: string): Promise<Response> {
+  if (isProduction()) {
+    const base = (import.meta.env.VITE_NF3_PROXY_BASE as string | undefined)?.trim() || DEFAULT_NPB_PROXY_BASE
+    return fetch(buildCorsProxyUrl(`https://nf3.sakura.ne.jp${path}`, base), PROXY_REQUEST)
+  }
+  return fetch(`/api/nf3${path}`, NO_CACHE)
 }
 
 /** NPB名簿ページ（/announcement/roster/）を取得 */

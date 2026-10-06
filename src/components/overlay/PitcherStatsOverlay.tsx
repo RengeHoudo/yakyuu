@@ -26,15 +26,20 @@ export default function PitcherStatsOverlay({ visible, pitcherName, teamName, ba
   useEffect(() => {
     if (!pitcherName) return
     let active = true
+    let retryTimer: number | undefined
     setLoaded({ key: requestKey, status: 'loading', data: null })
-    fetchNpbScholarPitcherStats(pitcherName, teamName)
+    const load = () => fetchNpbScholarPitcherStats(pitcherName, teamName)
       .then((data) => {
         if (active) setLoaded({ key: requestKey, status: 'ready', data })
       })
       .catch(() => {
-        if (active) setLoaded({ key: requestKey, status: 'error', data: null })
+        if (active) {
+          setLoaded({ key: requestKey, status: 'error', data: null })
+          retryTimer = window.setTimeout(load, 60000)
+        }
       })
-    return () => { active = false }
+    void load()
+    return () => { active = false; window.clearTimeout(retryTimer) }
   }, [pitcherName, requestKey, teamName])
 
   if (!visible || !pitcherName) return null
@@ -68,7 +73,9 @@ export default function PitcherStatsOverlay({ visible, pitcherName, teamName, ba
           {status === 'loading' ? (
             <div className="text-[9px] leading-tight text-gray-400">取得中</div>
           ) : !stats ? (
-            <div className="text-[9px] leading-tight text-gray-400">データなし</div>
+            <div className="text-[9px] leading-tight text-gray-400">
+              {status === 'error' ? '取得失敗・再試行待ち' : 'データなし'}
+            </div>
           ) : (
             <>
               <div className="py-[2.25px]">

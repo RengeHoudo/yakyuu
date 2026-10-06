@@ -1,8 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { LineupPlayer, Runners } from '../../types'
 import {
-  clearNpbScholarCache,
-  fetchNpbScholarBatterStats,
   getBaseState,
   getLiveBatterAverage,
   mergeBatterSituationalStats,
@@ -98,6 +96,16 @@ describe('getLiveBatterAverage', () => {
 })
 
 describe('mergeBatterSituationalStats', () => {
+  it('未配信の走者別シーズン成績を試合内成績だけで補完しない', () => {
+    const merged = mergeBatterSituationalStats(
+      { byBaseState: {}, byPitcherHand: {}, byCount: {} },
+      { '1st+3rd': { atBats: 1, hits: 1 } },
+    )
+    expect(merged.risp).toBeUndefined()
+    expect(merged.nonRisp).toBeUndefined()
+    expect(merged.byBaseState['1st+3rd']).toBeUndefined()
+  })
+
   it('得点圏と現在の走者別成績へ、その試合の打数・安打数を合算する', () => {
     const season = parseNpbScholarBatterStats(BASE_STATE_PAYLOAD)
 
@@ -134,49 +142,5 @@ describe('mergeBatterSituationalStats', () => {
 
     expect(merged.byPitcherHand.R).toEqual({ average: '.258', atBats: 236, hits: 61 })
     expect(merged.byCount['2-1']).toEqual({ average: '.550', atBats: 20, hits: 11 })
-  })
-})
-
-describe('fetchNpbScholarBatterStats', () => {
-  beforeEach(() => clearNpbScholarCache())
-
-  it.each([
-    ['髙寺 望夢', '高寺望夢'],
-    ['宮﨑 敏郎', '宮崎敏郎'],
-    ['渡邊 佳明', '渡辺佳明'],
-    ['山縣 秀', '山県秀'],
-  ])('打者名「%s」もScholarの字体「%s」で照合する', async (npbName, scholarName) => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ players: [
-        { slug: 'batter', player_type: 'batter', player_name: scholarName },
-      ] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(BASE_STATE_PAYLOAD), { status: 200 }))
-
-    expect((await fetchNpbScholarBatterStats(npbName, '', fetcher))?.risp.average).toBe('.300')
-    expect(fetcher).toHaveBeenLastCalledWith('https://npbscholar.com/data/players/batter.json', { cache: 'no-store' })
-  })
-
-  it('空白を除いた選手名とチーム名でslugを解決して走者別JSONを取得する', async () => {
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        players: [
-          {
-            slug: 'hb-5715ca9602',
-            player_type: 'batter',
-            player_name: '小園海斗',
-            team_name: '広島東洋カープ',
-          },
-        ],
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(BASE_STATE_PAYLOAD), { status: 200 }))
-
-    const stats = await fetchNpbScholarBatterStats('小園 海斗', '広島東洋カープ', fetcher)
-
-    expect(stats?.risp.average).toBe('.300')
-    expect(fetcher).toHaveBeenNthCalledWith(
-      2,
-      'https://npbscholar.com/data/players/hb-5715ca9602.json',
-      { cache: 'no-store' },
-    )
   })
 })

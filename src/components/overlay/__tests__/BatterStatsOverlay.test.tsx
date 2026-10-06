@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BatterSituationalStats } from '../../../lib/npbScholar'
 import { fetchNpbScholarBatterStats } from '../../../lib/npbScholar'
+import { fetchNf3BatterStats } from '../../../lib/nf3'
 import { clearUndoHistory, useGameStore } from '../../../store/useGameStore'
 import { defaultBatterGameStats, initialGameState, type LineupPlayer } from '../../../types'
 import CountControl from '../../control/CountControl'
@@ -14,6 +15,7 @@ vi.mock('../../../lib/npbScholar', async (importOriginal) => {
 })
 
 vi.mock('../../../lib/sync', () => ({ broadcastState: vi.fn() }))
+vi.mock('../../../lib/nf3', () => ({ fetchNf3BatterStats: vi.fn().mockResolvedValue(null) }))
 vi.mock('../../../lib/idbBackup', () => ({
   backupToIDB: vi.fn(),
   restoreFromIDB: vi.fn().mockResolvedValue(null),
@@ -75,6 +77,7 @@ beforeEach(() => {
   localStorage.clear()
   clearUndoHistory()
   mockedFetch.mockReset()
+  vi.mocked(fetchNf3BatterStats).mockReset().mockResolvedValue(null)
   useGameStore.setState({
     ...initialGameState,
     currentHalf: 'top',
@@ -94,6 +97,34 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('BatterStatsOverlay', () => {
+  it('走者別・得点圏はnf3、対左右はScholarを使ってライブ成績を加算する', async () => {
+    mockedFetch.mockResolvedValue(firstStats)
+    vi.mocked(fetchNf3BatterStats).mockResolvedValue({
+      risp: { average: '.250', atBats: 40, hits: 10 },
+      nonRisp: { average: '.200', atBats: 100, hits: 20 },
+      byBaseState: { '1st+3rd': { average: '.400', atBats: 10, hits: 4 } },
+      byPitcherHand: {}, byCount: {},
+    })
+    useGameStore.setState({ batterSituationalGameStats: { 'away-51': { '1st+3rd': { atBats: 1, hits: 1 } } } })
+    render(<BatterStatsOverlay />)
+    expect(await screen.findByText('.268 (41 - 11)')).toBeInTheDocument()
+    expect(screen.getByTestId('base-state-average')).toHaveTextContent('.455 (11 - 5)')
+    expect(screen.getByTestId('pitcher-hand-average')).toHaveTextContent('.256 (234 - 60)')
+    expect(fetchNf3BatterStats).toHaveBeenCalledWith('小園 海斗', '広島東洋カープ')
+  })
+
+  it.each(['Scholar', 'nf3'])('%sだけが失敗しても、もう片方の成績と出塁率を残す', async (failed) => {
+    mockedFetch.mockResolvedValue(firstStats)
+    vi.mocked(fetchNf3BatterStats).mockResolvedValue({ ...firstStats, byPitcherHand: {} })
+    if (failed === 'Scholar') mockedFetch.mockRejectedValue(new Error('offline'))
+    else vi.mocked(fetchNf3BatterStats).mockRejectedValue(new Error('offline'))
+    render(<BatterStatsOverlay />)
+    await screen.findByText('取得失敗・再試行待ち')
+    expect(screen.getByTestId(failed === 'Scholar' ? 'base-state-average' : 'pitcher-hand-average'))
+      .toHaveTextContent(failed === 'Scholar' ? '.500 (10 - 5)' : '.256 (234 - 60)')
+    expect(screen.getByTestId('live-on-base-pct')).toBeInTheDocument()
+  })
+
   it('名前、ライブ打率、得点圏、走者別、投手左右別、出塁率を表示する', async () => {
     mockedFetch.mockResolvedValue(firstStats)
 
@@ -312,7 +343,7 @@ describe('BatterStatsOverlay', () => {
 
     expect(screen.getByText('取得中')).toBeInTheDocument()
     expect(screen.getByTestId('live-on-base-pct')).toHaveTextContent('.431 (四:20 - 死:5)')
-    await screen.findByText('データなし')
+    await screen.findByText(status === '取得失敗' ? '取得失敗・再試行待ち' : 'データなし')
     expect(screen.getByTestId('live-on-base-pct')).toHaveTextContent('.431 (四:20 - 死:5)')
   })
 

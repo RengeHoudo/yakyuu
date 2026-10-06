@@ -6,6 +6,7 @@ import {
   mergeBatterSituationalStats,
 } from '../../lib/npbScholar'
 import type { BatterAverageDetail, BatterSituationalStats } from '../../lib/npbScholar'
+import { fetchNf3BatterStats } from '../../lib/nf3'
 import { useGameStore } from '../../store/useGameStore'
 import { computeLiveBattingStats, type LineupPlayer } from '../../types'
 import PitcherStatsOverlay from './PitcherStatsOverlay'
@@ -29,6 +30,35 @@ interface LoadedStats {
   key: string
   status: 'loading' | 'ready' | 'error'
   data: BatterSituationalStats | null
+}
+
+/** 取得元ごとに状態を保持し、一方の障害や遅延で他方の表示を止めない。 */
+function useBatterStatsSource(
+  fetchStats: (name: string, team: string) => Promise<BatterSituationalStats | null>,
+  playerName: string,
+  teamName: string,
+): LoadedStats {
+  const requestKey = JSON.stringify([playerName, teamName])
+  const [loaded, setLoaded] = useState<LoadedStats>({ key: '', status: 'loading', data: null })
+  useEffect(() => {
+    if (!playerName) return
+    let active = true
+    let retryTimer: number | undefined
+    setLoaded({ key: requestKey, status: 'loading', data: null })
+    const load = () => fetchStats(playerName, teamName)
+      .then((data) => {
+        if (active) setLoaded({ key: requestKey, status: 'ready', data })
+      })
+      .catch(() => {
+        if (active) {
+          setLoaded({ key: requestKey, status: 'error', data: null })
+          retryTimer = window.setTimeout(load, 60000)
+        }
+      })
+    void load()
+    return () => { active = false; window.clearTimeout(retryTimer) }
+  }, [fetchStats, playerName, requestKey, teamName])
+  return loaded.key === requestKey ? loaded : { key: requestKey, status: 'loading', data: null }
 }
 
 export default function BatterStatsOverlay() {
@@ -57,7 +87,6 @@ export default function BatterStatsOverlay() {
   const playerKey = lineupPlayer?.number ? `${teamKey}-${lineupPlayer.number}` : null
   const gameSituationalStats = playerKey ? batterSituationalGameStats[playerKey] : undefined
   const gamePitcherHandStats = playerKey ? batterPitcherHandGameStats[playerKey] : undefined
-  const requestKey = `${playerName}|${teamName}`
   // 成績やカウントの更新ではリセットせず、打順・選手・攻撃チームの変更を検出する。
   const batterIdentity = JSON.stringify([teamKey, batterIndex, playerName, batter.number || indexedPlayer?.number])
   const hasPitcher = Boolean(pitcher.name)
@@ -74,23 +103,18 @@ export default function BatterStatsOverlay() {
 
   const showPitcher = hasPitcher && rotation.key === batterIdentity && rotation.pitcher
 
-  const [loaded, setLoaded] = useState<LoadedStats>({ key: '', status: 'loading', data: null })
-
-  useEffect(() => {
-    if (!playerName) return
-    let active = true
-    setLoaded({ key: requestKey, status: 'loading', data: null })
-    fetchNpbScholarBatterStats(playerName, teamName)
-      .then((data) => {
-        if (active) setLoaded({ key: requestKey, status: 'ready', data })
-      })
-      .catch(() => {
-        if (active) setLoaded({ key: requestKey, status: 'error', data: null })
-      })
-    return () => { active = false }
-  }, [playerName, requestKey, teamName])
-
-  const seasonStats = loaded.key === requestKey ? loaded.data : null
+  const scholar = useBatterStatsSource(fetchNpbScholarBatterStats, playerName, teamName)
+  const nf3 = useBatterStatsSource(fetchNf3BatterStats, playerName, teamName)
+  const seasonStats = useMemo<BatterSituationalStats | null>(() => {
+    if (!scholar.data && !nf3.data) return null
+    return {
+      risp: nf3.data?.risp ?? scholar.data?.risp,
+      nonRisp: nf3.data?.nonRisp ?? scholar.data?.nonRisp,
+      byBaseState: nf3.data?.byBaseState ?? scholar.data?.byBaseState ?? {},
+      byPitcherHand: scholar.data?.byPitcherHand ?? {},
+      byCount: scholar.data?.byCount ?? {},
+    }
+  }, [nf3.data, scholar.data])
   const stats = useMemo(
     () => seasonStats
       ? mergeBatterSituationalStats(
@@ -101,7 +125,8 @@ export default function BatterStatsOverlay() {
       : null,
     [gamePitcherHandStats, gameSituationalStats, seasonStats],
   )
-  const status = loaded.key === requestKey ? loaded.status : 'loading'
+  const status = scholar.status === 'error' || nf3.status === 'error' ? 'error'
+    : scholar.status === 'loading' || nf3.status === 'loading' ? 'loading' : 'ready'
   const baseState = getBaseState(runners)
   const isScoringPosition = runners.second || runners.third
   const situationDetail = stats
@@ -156,10 +181,12 @@ export default function BatterStatsOverlay() {
           data-testid="situational-stats-list"
           className="border-t border-white/30 mt-1.5 pt-1.5 flex-1 min-h-0 space-y-[3px]"
         >
-          {status === 'loading' ? (
+          {!stats && status === 'loading' ? (
             <div className="text-[9px] leading-tight text-gray-400">取得中</div>
-          ) : status === 'error' || !stats ? (
-            <div className="text-[9px] leading-tight text-gray-400">データなし</div>
+          ) : !stats ? (
+            <div className="text-[9px] leading-tight text-gray-400">
+              {status === 'error' ? '取得失敗・再試行待ち' : 'データなし'}
+            </div>
           ) : (
             <>
               <div data-testid="situational-stat-item" className="py-[2.25px]">
@@ -205,6 +232,9 @@ export default function BatterStatsOverlay() {
               {formatOnBasePct(lineupPlayer)}
             </div>
           </div>
+          {stats && status === 'error' && (
+            <div className="text-[8px] leading-tight text-gray-400">取得失敗・再試行待ち</div>
+          )}
         </div>
       </div>
     </div>
