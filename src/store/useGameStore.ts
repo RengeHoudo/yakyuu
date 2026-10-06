@@ -1418,6 +1418,14 @@ export const useGameStore = create<GameStore>()(
           }
 
           const newPlayer = { ...player, ...gameStatOverride }
+          const previousPlayer = lineup[index]
+          // 手動交代でコピーされた前選手のNPB表示名を破棄する。
+          // 同じ選手の編集や、新しく指定された表示名はそのまま保持する。
+          if (previousPlayer
+            && (previousPlayer.name !== player.name || previousPlayer.number !== player.number)
+            && player.npbDisplayName === previousPlayer.npbDisplayName) {
+            newPlayer.npbDisplayName = undefined
+          }
           Object.assign(newPlayer, computeLiveBattingStats(newPlayer))
           lineup[index] = newPlayer
 
