@@ -744,7 +744,7 @@ describe('parseNpbPitchingHtml – throwHand', () => {
 
 describe('fetchNpbStats', () => {
   beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
-  afterEach(() => { vi.unstubAllGlobals() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
   const battingPlayers: RosterPlayer[] = [
     { positionCategory: '外野手', number: '55', name: '秋山 翔吾' },
@@ -753,6 +753,26 @@ describe('fetchNpbStats', () => {
   const pitcherPlayers: RosterPlayer[] = [
     { positionCategory: '投手', number: '18', name: '森下 暢仁' },
   ]
+
+  it('本番で打撃ページが422でも取得できた投手成績を保持する', async () => {
+    vi.stubEnv('PROD', true)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Timeout was reached' }), { status: 422 }))
+      .mockResolvedValueOnce(new Response(makePitchingHtml([['森下 暢仁', '10', '5', '3']])))
+
+    const result = await fetchNpbStats('広島', pitcherPlayers)
+    expect(result[0]?.record).toBe('5勝3敗')
+  })
+
+  it('本番で投手ページが422でも取得できた打撃成績を保持する', async () => {
+    vi.stubEnv('PROD', true)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(makeBattingHtml([['秋山 翔吾', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.278', '.405', '.330']])))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Timeout was reached' }), { status: 422 }))
+
+    const result = await fetchNpbStats('広島', battingPlayers)
+    expect(result[0]?.battingAvg).toBe('.278')
+  })
 
   it('打者に打撃成績がマージされる', async () => {
     const battingHtml = makeBattingHtml([['秋山 翔吾', '143', '620', '560', '95', '173', '32', '5', '3', '225', '25', '20', '5', '3', '4', '55', '3', '2', '80', '8', '.278', '.405', '.330']])

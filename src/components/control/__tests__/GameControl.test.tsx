@@ -22,6 +22,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('GameControl - オールスターURL適用', () => {
@@ -49,4 +50,20 @@ describe('GameControl - オールスターURL適用', () => {
       expect(state.scoreUrl).toBe('https://npb.jp/scores/2026/0727/cl-pl-01/')
     })
   })
+})
+
+it('名簿取得の422では中継タイムアウトと回避手段を表示し、既存名簿を保持する', async () => {
+  vi.stubEnv('PROD', true)
+  const roster = [{ positionCategory: '投手' as const, number: '1', name: '登録済み 選手' }]
+  useRosterStore.setState({ awayRoster: roster })
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+    message: 'Request failed: Timeout was reached',
+  }), { status: 422 }))
+  render(<GameControl />)
+
+  fireEvent.change(screen.getAllByRole('combobox')[0]!, { target: { value: 'DeNA' } })
+
+  expect(await screen.findByText(/NPB取得プロキシ（r.jina.ai）でタイムアウトしました/)).toHaveTextContent('手動でCSVをインポート')
+  expect(useRosterStore.getState().awayRoster).toEqual(roster)
+  expect(screen.getAllByRole('combobox')[0]).toBeEnabled()
 })

@@ -361,23 +361,16 @@ export async function fetchNpbStats(presetName: string, players: RosterPlayer[])
   if (!code) return players
 
   const year = new Date().getFullYear()
-  let battingMap = new Map<string, BattingStats>()
-  let pitchingMap = new Map<string, PitchingStats>()
-
-  try {
-    const [battingRes, pitchingRes] = await Promise.all([
-      fetchNpbStatsPage('batting', year, code),
-      fetchNpbStatsPage('pitching', year, code),
-    ])
-    if (battingRes.ok) {
-      battingMap = parseNpbBattingHtml(await battingRes.text())
-    }
-    if (pitchingRes.ok) {
-      pitchingMap = parseNpbPitchingHtml(await pitchingRes.text())
-    }
-  } catch {
-    return players
-  }
+  // 中継サービスが片方の取得に失敗しても、もう片方の成績は利用する。
+  const [batting, pitching] = await Promise.allSettled([
+    fetchNpbStatsPage('batting', year, code).then(async (res) =>
+      res.ok ? parseNpbBattingHtml(await res.text()) : new Map<string, BattingStats>()),
+    fetchNpbStatsPage('pitching', year, code).then(async (res) =>
+      res.ok ? parseNpbPitchingHtml(await res.text()) : new Map<string, PitchingStats>()),
+  ])
+  const battingMap = batting.status === 'fulfilled' ? batting.value : new Map<string, BattingStats>()
+  const pitchingMap = pitching.status === 'fulfilled' ? pitching.value : new Map<string, PitchingStats>()
+  if (battingMap.size === 0 && pitchingMap.size === 0) return players
 
   return players.map((p) => {
     const key = nameKey(p.name)

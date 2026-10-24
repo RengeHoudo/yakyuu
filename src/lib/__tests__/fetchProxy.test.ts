@@ -57,12 +57,89 @@ describe('buildCorsProxyUrl cache-busting', () => {
 })
 
 describe('production NPB fetch', () => {
-  it('DOMを保持するHTML形式とキャッシュ無効化をReaderへ指定する', async () => {
+  it('Readerの422タイムアウトを、取得先と中継サービスを含むエラーとして伝える', async () => {
     vi.stubEnv('PROD', true)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      name: 'AssertionFailureError',
+      message: 'Request failed: Timeout was reached',
+    }), { status: 422 })))
+
+    await expect(fetchNpbRosterPage()).rejects.toThrow(
+      'NPB取得プロキシ（r.jina.ai）でタイムアウトしました (HTTP 422)。取得先: https://npb.jp/announcement/roster/',
+    )
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    [422, JSON.stringify({ message: 'Invalid input' })],
+    [502, '<html>Bad Gateway</html>'],
+    [429, JSON.stringify({ message: 'Rate limit exceeded' })],
+  ])('HTTP %sをタイムアウトと決めつけず、HTMLのエラー本文も表示しない', async (status, body) => {
+    vi.stubEnv('PROD', true)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status })))
+
+    await expect(fetchNpbRosterPage()).rejects.toThrow(
+      `NPB取得プロキシ（r.jina.ai）へのアクセスに失敗しました (HTTP ${status})。取得先: https://npb.jp/announcement/roster/`,
+    )
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('専用プロキシ設定を反映する', async () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('VITE_NPB_PROXY_BASE', ' https://proxy.example/npb ')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
     await fetchNpbRosterPage()
 
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/proxy\.example\/npb\/https:\/\/npb\.jp\/announcement\/roster\//),
+      expect.objectContaining({ cache: 'no-store' }),
+    )
+  })
+
+  it('クライアント側の待ち時間に上限を設け、時間切れを説明する', async () => {
+    vi.stubEnv('PROD', true)
+    const signal = new AbortController().signal
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(signal)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('Timed out', 'TimeoutError')))
+
+    try {
+      await expect(fetchNpbRosterPage()).rejects.toThrow('NPB取得プロキシ（r.jina.ai）でタイムアウトしました')
+      expect(timeout).toHaveBeenCalledWith(30_000)
+      expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }))
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it('通信エラーでも取得先と中継サービスを示す', async () => {
+    vi.stubEnv('PROD', true)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(fetchNpbRosterPage()).rejects.toThrow(
+      'NPB取得プロキシ（r.jina.ai）と通信できませんでした。取得先: https://npb.jp/announcement/roster/',
+    )
+  })
+
+  it('開発時はNPBへのViteプロキシを使い、HTTP応答をそのまま返す', async () => {
+    vi.stubEnv('PROD', false)
+    const response = new Response('unavailable', { status: 503 })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+
+    expect(await fetchNpbRosterPage()).toBe(response)
+    expect(fetch).toHaveBeenCalledWith('/api/npb-roster', { cache: 'no-store' })
+  })
+
+  it('DOMを保持するHTML形式とキャッシュ無効化をReaderへ指定する', async () => {
+    vi.stubEnv('PROD', true)
+    const html = '<table><tr><td>選手名</td></tr></table>'
+    const response = new Response(html)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+
+    const result = await fetchNpbRosterPage()
+
+    expect(result).toBe(response)
+    expect(await result.text()).toBe(html)
     expect(fetch).toHaveBeenCalledOnce()
     const [url, options] = vi.mocked(fetch).mock.calls[0]!
     expect(url).toMatch(/^https:\/\/r\.jina\.ai\/https:\/\/npb\.jp\/announcement\/roster\//)

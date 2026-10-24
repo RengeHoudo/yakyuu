@@ -12,8 +12,10 @@ const DEFAULT_NPB_PROXY_BASE = 'https://r.jina.ai/'
  * 専用プロキシを用意した場合は VITE_NPB_PROXY_BASE で差し替えられる。
  * 値は `https://example.com/` のように、対象URLを末尾へ連結できる形式を想定する。
  */
-const NPB_PROXY_BASE = (import.meta.env.VITE_NPB_PROXY_BASE as string | undefined)?.trim()
-  || DEFAULT_NPB_PROXY_BASE
+function npbProxyBase(): string {
+  return (import.meta.env.VITE_NPB_PROXY_BASE as string | undefined)?.trim()
+    || DEFAULT_NPB_PROXY_BASE
+}
 
 /** キャッシュ無効化オプション */
 const NO_CACHE: RequestInit = { cache: 'no-store' }
@@ -35,15 +37,42 @@ function isProduction(): boolean {
  * CORSプロキシ用URLを生成する。
  * プロキシサーバー側キャッシュを回避するため _cb パラメータを付与する。
  */
-export function buildCorsProxyUrl(targetUrl: string, base = NPB_PROXY_BASE): string {
+export function buildCorsProxyUrl(targetUrl: string, base = npbProxyBase()): string {
   const separator = targetUrl.includes('?') ? '&' : '?'
   const busted = `${targetUrl}${separator}_cb=${Date.now()}`
   const proxyBase = base.endsWith('/') ? base : `${base}/`
   return `${proxyBase}${busted}`
 }
 
-function fetchProductionPage(targetUrl: string): Promise<Response> {
-  return fetch(buildCorsProxyUrl(targetUrl), PROXY_REQUEST)
+async function fetchProductionPage(targetUrl: string): Promise<Response> {
+  const proxyUrl = buildCorsProxyUrl(targetUrl)
+  const source = `NPB取得プロキシ（${new URL(proxyUrl).hostname}）`
+  const target = `。取得先: ${targetUrl}`
+  let response: Response
+  try {
+    response = await fetch(proxyUrl, {
+      ...PROXY_REQUEST,
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (error) {
+    const timedOut = typeof error === 'object' && error !== null
+      && 'name' in error && error.name === 'TimeoutError'
+    throw new Error(`${source}${timedOut ? 'でタイムアウトしました' : 'と通信できませんでした'}${target}`)
+  }
+  if (response.ok) return response
+
+  // Readerの422は取得先でのタイムアウトの場合がある。ステータスだけでは断定しない。
+  // 外部サービスのHTMLや任意のエラー本文は、ユーザー向けメッセージに含めない。
+  let timedOut = false
+  try {
+    const body: unknown = await response.json()
+    if (typeof body === 'object' && body !== null && 'message' in body) {
+      timedOut = typeof body.message === 'string' && /timeout|timed out/i.test(body.message)
+    }
+  } catch {
+    // JSON以外のエラー応答でもHTTPステータスは伝える。
+  }
+  throw new Error(`${source}${timedOut ? 'でタイムアウトしました' : 'へのアクセスに失敗しました'} (HTTP ${response.status})${target}`)
 }
 
 /** nf3 は CORS 非対応なので開発時・本番ともHTMLプロキシを使う。 */
